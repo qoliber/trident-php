@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class BackendsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<array{name: string, host: string, port: int, status: string, healthy: bool, total_requests: int, total_errors: int, active_connections: int, avg_response_ms: float}> $backends
      */
@@ -29,12 +31,12 @@ class BackendsResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             total: (int) ($data['total'] ?? 0),
             healthy: (int) ($data['healthy'] ?? 0),
             unhealthy: (int) ($data['unhealthy'] ?? 0),
             backends: $data['backends'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function isAllHealthy(): bool

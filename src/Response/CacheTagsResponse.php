@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class CacheTagsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<TagItem> $tags
      */
@@ -35,13 +37,13 @@ class CacheTagsResponse
             (array) ($data['tags'] ?? [])
         );
 
-        return new self(
+        return (new self(
             tags: $tags,
             total: (int) ($data['total'] ?? count($tags)),
             offset: (int) ($data['offset'] ?? 0),
             limit: (int) ($data['limit'] ?? 50),
             hasMore: (bool) ($data['has_more'] ?? false)
-        );
+        ))->attachRaw($data);
     }
 
     /**
@@ -84,6 +86,8 @@ class CacheTagsResponse
 
 class TagItem
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly string $tag,
         public readonly int $entries
@@ -95,10 +99,10 @@ class TagItem
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             tag: (string) ($data['tag'] ?? $data['name'] ?? ''),
             entries: (int) ($data['entries'] ?? $data['count'] ?? 0)
-        );
+        ))->attachRaw($data);
     }
 
     /**

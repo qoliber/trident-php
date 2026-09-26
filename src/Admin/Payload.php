@@ -82,6 +82,17 @@ final class Payload
     }
 
     /**
+     * The same as all(): the name every typed response uses for the engine's
+     * full answer (1.5.0), so a caller reads any admin answer the same way.
+     *
+     * @return array<string, mixed>
+     */
+    public function raw(): array
+    {
+        return $this->data;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function all(): array

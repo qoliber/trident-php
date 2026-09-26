@@ -46,7 +46,26 @@ final class PurgeClient
         if ($response['status'] === 0) {
             return new PurgeAttempt(self::noResponse($response['error']), true);
         }
-        return new PurgeAttempt(Acknowledgement::purgeFailure($response['status'], $response['body']));
+        return PurgeAttempt::fromAnswer(Acknowledgement::purgeFailure($response['status'], $response['body']), $response['body']);
+    }
+
+    /**
+     * Remove every entry on this instance (1.5.0), judged like a purge: the
+     * clear schema (`cleared: true` on a 200) is the acknowledgement, anything
+     * else a failure worth retrying. The removed-entry count is in `purged`.
+     */
+    public function clear(): PurgeAttempt
+    {
+        $response = $this->transport->request(
+            'POST',
+            $this->instance->apiUrl . '/admin/cache/clear',
+            $this->headers(),
+            (string) json_encode(['confirm' => true])
+        );
+        if ($response['status'] === 0) {
+            return new PurgeAttempt(self::noResponse($response['error']), true);
+        }
+        return PurgeAttempt::fromAnswer(Acknowledgement::clearFailure($response['status'], $response['body']), $response['body']);
     }
 
     /**

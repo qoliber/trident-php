@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class DiscoveryRefreshResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<string> $ips
      */
@@ -30,13 +32,13 @@ class DiscoveryRefreshResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             success: (bool) ($data['success'] ?? true),
             name: (string) ($data['name'] ?? $data['backend_name'] ?? ''),
             ips: (array) ($data['ips'] ?? $data['resolved_ips'] ?? $data['addresses'] ?? []),
             message: isset($data['message']) ? (string) $data['message'] : null,
             error: isset($data['error']) ? (string) $data['error'] : null
-        );
+        ))->attachRaw($data);
     }
 
     public function isSuccess(): bool

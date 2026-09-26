@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class CacheEntryResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<string> $tags
      */
@@ -39,7 +41,7 @@ class CacheEntryResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             found: (bool) ($data['found'] ?? false),
             storageKey: $data['storage_key'] ?? null,
             status: $data['status'] ?? null,
@@ -53,7 +55,7 @@ class CacheEntryResponse
             vary: array_values(array_filter((array) ($data['vary'] ?? []), 'is_string')),
             graceRemaining: isset($data['grace_remaining']) ? (int) $data['grace_remaining'] : null,
             compressed: isset($data['compressed']) ? (bool) $data['compressed'] : null
-        );
+        ))->attachRaw($data);
     }
 
     public function isFresh(): bool

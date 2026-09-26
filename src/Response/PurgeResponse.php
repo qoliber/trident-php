@@ -15,6 +15,8 @@ use Qoliber\Trident\Delivery\Acknowledgement;
 
 class PurgeResponse
 {
+    use CarriesRaw;
+
     /**
      * @param bool        $success      Kept for compatibility: true for any purge body,
      *                                  even one Trident did not act on — use
@@ -55,7 +57,7 @@ class PurgeResponse
             ? Acknowledgement::clearFailure($status, $body)
             : Acknowledgement::purgeFailure($status, $body);
 
-        return new self(
+        return (new self(
             success: $success,
             purgedCount: $purged,
             mode: $data['mode'] ?? null,
@@ -66,7 +68,7 @@ class PurgeResponse
             acknowledged: $failure === null,
             state: isset($data['state']) && is_string($data['state']) ? $data['state'] : null,
             failure: $failure
-        );
+        ))->attachRaw($data);
     }
 
     /**

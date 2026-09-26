@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class ReadyResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<string, string> $backends
      */
@@ -31,11 +33,11 @@ class ReadyResponse
         // Trident returns {"ready": true/false, "backends_healthy": n, "backends_total": n}
         $ready = $data['ready'] ?? (($data['status'] ?? '') === 'ready');
 
-        return new self(
+        return (new self(
             ready: (bool) $ready,
             status: $ready ? 'ready' : ($data['status'] ?? 'not_ready'),
             backends: $data['backends'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function isReady(): bool

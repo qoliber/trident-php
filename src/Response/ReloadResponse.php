@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class ReloadResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $success,
         public readonly ?string $status = null,
@@ -28,12 +30,12 @@ class ReloadResponse
     {
         $status = $data['status'] ?? null;
 
-        return new self(
+        return (new self(
             success: in_array($status, ['reloaded', 'ok'], true) || ($data['success'] ?? false),
             status: $status,
             config: $data['config'] ?? null,
             message: $data['message'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     public function isSuccess(): bool

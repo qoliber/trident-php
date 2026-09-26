@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class ConnectionsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<BackendConnections> $backends
      */
@@ -33,11 +35,11 @@ class ConnectionsResponse
             (array) ($data['backends'] ?? [])
         );
 
-        return new self(
+        return (new self(
             totalActive: (int) ($data['total_active'] ?? 0),
             totalIdle: (int) ($data['total_idle'] ?? 0),
             backends: $backends
-        );
+        ))->attachRaw($data);
     }
 
     public function getTotalActive(): int
@@ -78,12 +80,17 @@ class ConnectionsResponse
 
 class BackendConnections
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly string $name,
         public readonly int $active,
         public readonly int $idle,
         public readonly int $maxConnections,
-        public readonly int $waitingRequests
+        public readonly int $waitingRequests,
+        public readonly ?bool $healthy = null,
+        public readonly int $totalCreated = 0,
+        public readonly int $totalReused = 0
     ) {
     }
 
@@ -92,13 +99,17 @@ class BackendConnections
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             name: (string) ($data['name'] ?? ''),
             active: (int) ($data['active'] ?? 0),
             idle: (int) ($data['idle'] ?? 0),
             maxConnections: (int) ($data['max_connections'] ?? $data['max'] ?? 0),
-            waitingRequests: (int) ($data['waiting_requests'] ?? $data['waiting'] ?? 0)
-        );
+            // 1.8 engines call it `queued`.
+            waitingRequests: (int) ($data['waiting_requests'] ?? $data['waiting'] ?? $data['queued'] ?? 0),
+            healthy: isset($data['healthy']) ? (bool) $data['healthy'] : null,
+            totalCreated: (int) ($data['total_created'] ?? 0),
+            totalReused: (int) ($data['total_reused'] ?? 0)
+        ))->attachRaw($data);
     }
 
     public function getTotalConnections(): int

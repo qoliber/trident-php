@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class PurgePreviewResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<string> $keys
      * @param array<string> $tags
@@ -43,13 +45,13 @@ class PurgePreviewResponse
                 }
             }
         }
-        return new self(
+        return (new self(
             wouldPurge: (int) ($data['would_purge'] ?? $data['count'] ?? 0),
             keys: $keys,
             tags: (array) ($data['tags'] ?? []),
             estimatedBytes: (int) ($data['would_free_bytes'] ?? $data['estimated_bytes'] ?? 0),
             sampleTruncated: (bool) ($data['sample_truncated'] ?? false)
-        );
+        ))->attachRaw($data);
     }
 
     public function getWouldPurge(): int

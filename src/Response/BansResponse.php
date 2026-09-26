@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class BansResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<array{ban_type: string, pattern: string, affected: int, created_at: string, age_secs: int, active: bool}> $bans
      */
@@ -28,11 +30,11 @@ class BansResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             total: (int) ($data['total'] ?? 0),
             active: (int) ($data['active'] ?? 0),
             bans: $data['bans'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function hasActiveBans(): bool

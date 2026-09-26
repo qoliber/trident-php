@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class RulesValidateResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $valid,
         public readonly int $requestRules = 0,
@@ -26,12 +28,12 @@ class RulesValidateResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             valid: $data['valid'] ?? false,
             requestRules: (int) ($data['request_rules'] ?? 0),
             responseRules: (int) ($data['response_rules'] ?? 0),
             error: $data['error'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     public function isValid(): bool

@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class LaunchStatusResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array{total: int, completed: int, failed: int, pending: int, percent: int}|null $progress
      */
@@ -23,7 +25,8 @@ class LaunchStatusResponse
         public readonly ?string $currentUrl = null,
         public readonly bool $maintenanceActive = false,
         public readonly bool $canComplete = false,
-        public readonly bool $canAbort = true
+        public readonly bool $canAbort = true,
+        public readonly bool $active = false
     ) {
     }
 
@@ -32,15 +35,16 @@ class LaunchStatusResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             launchId: $data['launch_id'] ?? '',
             status: $data['status'] ?? $data['state'] ?? 'unknown',
             progress: $data['progress'] ?? null,
             currentUrl: $data['current_url'] ?? null,
             maintenanceActive: $data['maintenance_active'] ?? false,
             canComplete: $data['can_complete'] ?? false,
-            canAbort: $data['can_abort'] ?? true
-        );
+            canAbort: $data['can_abort'] ?? true,
+            active: (bool) ($data['active'] ?? false)
+        ))->attachRaw($data);
     }
 
     public function isWarming(): bool

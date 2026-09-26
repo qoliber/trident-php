@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class CacheStatsResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly int $entries,
         public readonly int $memoryUsed,
@@ -31,7 +33,10 @@ class CacheStatsResponse
         public readonly int $hits = 0,
         public readonly int $misses = 0,
         public readonly int $passes = 0,
-        public readonly ?float $hitRatio = null
+        public readonly ?float $hitRatio = null,
+        public readonly int $compressionsTotal = 0,
+        public readonly int $tagIndexedKeys = 0,
+        public readonly int $urlIndexedKeys = 0
     ) {
     }
 
@@ -40,14 +45,15 @@ class CacheStatsResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             entries: (int) ($data['entries'] ?? $data['entry_count'] ?? 0),
             memoryUsed: (int) ($data['memory_used'] ?? $data['bytes'] ?? $data['size_bytes'] ?? 0),
             maxMemory: (int) ($data['max_memory'] ?? 0),
             evictions: (int) ($data['evictions'] ?? 0),
             evictedBytes: (int) ($data['evicted_bytes'] ?? 0),
             memoryUsagePercent: (float) ($data['memory_usage_percent'] ?? 0.0),
-            compressedEntries: (int) ($data['compressed_entries'] ?? 0),
+            // 1.8 engines send `current_compressed_entries`.
+            compressedEntries: (int) ($data['compressed_entries'] ?? $data['current_compressed_entries'] ?? 0),
             compressionBytesOriginal: (int) ($data['compression_bytes_original'] ?? 0),
             compressionBytesCompressed: (int) ($data['compression_bytes_compressed'] ?? 0),
             compressionRatio: (float) ($data['compression_ratio'] ?? 1.0),
@@ -58,8 +64,11 @@ class CacheStatsResponse
             hits: (int) ($data['hits'] ?? 0),
             misses: (int) ($data['misses'] ?? 0),
             passes: (int) ($data['passes'] ?? 0),
-            hitRatio: isset($data['hit_ratio']) && is_numeric($data['hit_ratio']) ? (float) $data['hit_ratio'] : null
-        );
+            hitRatio: isset($data['hit_ratio']) && is_numeric($data['hit_ratio']) ? (float) $data['hit_ratio'] : null,
+            compressionsTotal: (int) ($data['compressions_total'] ?? 0),
+            tagIndexedKeys: (int) ($data['tag_indexed_keys'] ?? 0),
+            urlIndexedKeys: (int) ($data['url_indexed_keys'] ?? 0)
+        ))->attachRaw($data);
     }
 
     public function getEntries(): int

@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class HealthResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $healthy,
         public readonly string $status,
@@ -27,13 +29,15 @@ class HealthResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             healthy: ($data['status'] ?? '') === 'healthy' || ($data['healthy'] ?? false),
             status: $data['status'] ?? 'unknown',
             version: $data['version'] ?? null,
-            uptime: isset($data['uptime']) ? (int) $data['uptime'] : null,
+            // The engine sends `uptime_seconds`; `uptime` is the pre-1.8 name.
+            uptime: isset($data['uptime']) ? (int) $data['uptime']
+                : (isset($data['uptime_seconds']) ? (int) $data['uptime_seconds'] : null),
             backends: $data['backends'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     public function isHealthy(): bool

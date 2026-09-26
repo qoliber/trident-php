@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class DiscoveryDetailResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<DiscoveryIpStatus> $ips
      */
@@ -37,7 +39,7 @@ class DiscoveryDetailResponse
             (array) ($data['ips'] ?? [])
         );
 
-        return new self(
+        return (new self(
             name: (string) ($data['name'] ?? ''),
             hostname: (string) ($data['hostname'] ?? $data['host'] ?? ''),
             port: (int) ($data['port'] ?? 80),
@@ -45,7 +47,7 @@ class DiscoveryDetailResponse
             refreshIntervalSecs: (int) ($data['refresh_interval_secs'] ?? $data['refresh_interval'] ?? 60),
             lastResolved: isset($data['last_resolved']) ? (string) $data['last_resolved'] : null,
             nextRefresh: isset($data['next_refresh']) ? (string) $data['next_refresh'] : null
-        );
+        ))->attachRaw($data);
     }
 
     /**
@@ -101,6 +103,8 @@ class DiscoveryDetailResponse
 
 class DiscoveryIpStatus
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly string $ip,
         public readonly bool $healthy,
@@ -116,14 +120,14 @@ class DiscoveryIpStatus
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             ip: (string) ($data['ip'] ?? $data['address'] ?? ''),
             healthy: (bool) ($data['healthy'] ?? true),
             requests: (int) ($data['requests'] ?? 0),
             errors: (int) ($data['errors'] ?? 0),
             avgResponseMs: isset($data['avg_response_ms']) ? (float) $data['avg_response_ms'] : null,
             lastError: isset($data['last_error']) ? (string) $data['last_error'] : null
-        );
+        ))->attachRaw($data);
     }
 
     public function isHealthy(): bool

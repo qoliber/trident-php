@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class ConfigResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<string, mixed> $config
      */
@@ -26,9 +28,9 @@ class ConfigResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             config: $data
-        );
+        ))->attachRaw($data);
     }
 
     /**

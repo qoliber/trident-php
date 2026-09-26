@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class MemoryStatsResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly int $totalBytes,
         public readonly int $cacheBodyBytes,
@@ -23,7 +25,13 @@ class MemoryStatsResponse
         public readonly float $usagePercent,
         public readonly int $maxMemory,
         public readonly int $rssBytes = 0,
-        public readonly int $trackedBytes = 0
+        public readonly int $trackedBytes = 0,
+        /**
+         * Per-entry footprint percentiles (1.8 engines).
+         *
+         * @var array{count?: int, p50?: int, p95?: int, p99?: int}|null
+         */
+        public readonly ?array $footprintPercentiles = null
     ) {
     }
 
@@ -51,7 +59,7 @@ class MemoryStatsResponse
                 }
             }
             $rss = (int) ($snapshot['allocator']['rss_bytes'] ?? 0);
-            return new self(
+            return (new self(
                 totalBytes: $rss,
                 cacheBodyBytes: $bytes['cache_entry_bodies'] ?? 0,
                 cacheMetadataBytes: ($bytes['cache_entry_headers'] ?? 0) + ($bytes['cache_entry_keys'] ?? 0)
@@ -62,10 +70,11 @@ class MemoryStatsResponse
                 usagePercent: 0.0,
                 maxMemory: 0,
                 rssBytes: $rss,
-                trackedBytes: (int) ($snapshot['tracked_logical_bytes'] ?? 0)
-            );
+                trackedBytes: (int) ($snapshot['tracked_logical_bytes'] ?? 0),
+                footprintPercentiles: is_array($data['footprint_percentiles'] ?? null) ? $data['footprint_percentiles'] : null
+            ))->attachRaw($data);
         }
-        return new self(
+        return (new self(
             totalBytes: (int) ($data['total_bytes'] ?? $data['total'] ?? 0),
             cacheBodyBytes: (int) ($data['cache_body_bytes'] ?? $data['bodies'] ?? 0),
             cacheMetadataBytes: (int) ($data['cache_metadata_bytes'] ?? $data['metadata'] ?? 0),
@@ -74,7 +83,7 @@ class MemoryStatsResponse
             compressionSavedBytes: (int) ($data['compression_saved_bytes'] ?? 0),
             usagePercent: (float) ($data['usage_percent'] ?? 0.0),
             maxMemory: (int) ($data['max_memory'] ?? 0)
-        );
+        ))->attachRaw($data);
     }
 
     public function getTotalBytes(): int

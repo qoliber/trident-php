@@ -81,24 +81,27 @@ final class Drainer
         }
         $delivered = 0;
         $failed = 0;
+        $purged = 0;
         $report = [];
         foreach ($grouped as $name => $owed) {
             $result = $this->deliver(($this->clientFactory)($byName[$name]), $owed, $now);
             $report[(string) $name] = $result;
             $delivered += $result['delivered'];
             $failed += $result['failed'];
+            $purged += $result['purged'];
         }
-        return new DrainReport($delivered, $failed, $report);
+        return new DrainReport($delivered, $failed, $report, $purged);
     }
 
     /**
      * @param list<OutboxEntry> $entries Oldest first.
-     * @return array{delivered: int, failed: int, error: string|null}
+     * @return array{delivered: int, failed: int, error: string|null, purged: int}
      */
     private function deliver(PurgeClient $client, array $entries, int $now): array
     {
         $delivered = 0;
         $failed = 0;
+        $purged = 0;
         $failures = 0;
         $error = null;
         foreach (Packer::pack($entries) as $request) {
@@ -107,6 +110,7 @@ final class Drainer
             if ($attempt->acknowledged()) {
                 $this->store->remove($ids);
                 $delivered += count($ids);
+                $purged += $attempt->purged ?? 0;
                 $failures = 0;
                 continue;
             }
@@ -118,6 +122,6 @@ final class Drainer
                 break;
             }
         }
-        return ['delivered' => $delivered, 'failed' => $failed, 'error' => $error];
+        return ['delivered' => $delivered, 'failed' => $failed, 'error' => $error, 'purged' => $purged];
     }
 }

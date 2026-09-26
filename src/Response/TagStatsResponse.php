@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class TagStatsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<array{tag: string, entries: int}> $tags
      */
@@ -27,10 +29,10 @@ class TagStatsResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             totalTags: (int) ($data['total_tags'] ?? 0),
             tags: $data['tags'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function getTagEntryCount(string $tag): int

@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class LatencyStatsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array{avg_ms?: float, p50_ms?: float, p75_ms?: float, p90_ms?: float, p95_ms?: float, p99_ms?: float, min_ms?: float, max_ms?: float}|null $latency
      */
@@ -28,11 +30,12 @@ class LatencyStatsResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             latency: $data['latency'] ?? null,
-            sampleCount: (int) ($data['sample_count'] ?? 0),
+            // 1.8 engines report the sample count inside `latency`.
+            sampleCount: (int) ($data['sample_count'] ?? $data['latency']['count'] ?? 0),
             windowSecs: (int) ($data['window_secs'] ?? 0)
-        );
+        ))->attachRaw($data);
     }
 
     public function getAvgMs(): float

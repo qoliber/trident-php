@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class BackendActionResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $success,
         public readonly ?string $backend = null,
@@ -26,12 +28,12 @@ class BackendActionResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             success: ($data['success'] ?? false) || ($data['status'] ?? '') === 'ok',
             backend: $data['backend'] ?? null,
             action: $data['action'] ?? null,
             message: $data['message'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     public function isSuccess(): bool

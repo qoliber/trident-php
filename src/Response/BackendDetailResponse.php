@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class BackendDetailResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<string, mixed> $stats
      * @param array<string, mixed> $latency
@@ -37,7 +39,7 @@ class BackendDetailResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             name: $data['name'] ?? '',
             healthy: $data['healthy'] ?? false,
             host: $data['host'] ?? '',
@@ -49,7 +51,7 @@ class BackendDetailResponse
             tls: $data['tls'] ?? false,
             stats: $data['stats'] ?? [],
             latency: $data['latency'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function isHealthy(): bool

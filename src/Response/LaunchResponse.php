@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class LaunchResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $success,
         public readonly ?string $launchId = null,
@@ -33,7 +35,7 @@ class LaunchResponse
     {
         $status = $data['status'] ?? null;
 
-        return new self(
+        return (new self(
             // The engine says so directly (`success`); older shapes only implied it.
             success: isset($data['success'])
                 ? (bool) $data['success']
@@ -48,7 +50,7 @@ class LaunchResponse
             maintenanceActive: $data['maintenance_active'] ?? null,
             message: $data['message'] ?? null,
             reason: $data['reason'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     public function isSuccess(): bool

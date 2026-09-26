@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class RulesResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<array{name: string, priority: int, enabled: bool, evaluations: int, matches: int}> $request
      * @param array<array{name: string, priority: int, enabled: bool, evaluations: int, matches: int}> $response
@@ -30,12 +32,12 @@ class RulesResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             requestRules: (int) ($data['request_rules'] ?? 0),
             responseRules: (int) ($data['response_rules'] ?? 0),
             request: $data['request'] ?? [],
             response: $data['response'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function getTotalRules(): int

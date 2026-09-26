@@ -23,6 +23,7 @@ use Qoliber\Trident\Delivery\Instance;
 use Qoliber\Trident\Delivery\Instances;
 use Qoliber\Trident\Delivery\Psr18Transport;
 use Qoliber\Trident\Delivery\Transport;
+use Qoliber\Trident\Exception\InvalidRequest;
 use Qoliber\Trident\Exception\TridentException;
 use Qoliber\Trident\Response\BackendActionResponse;
 use Qoliber\Trident\Response\BackendDetailResponse;
@@ -33,6 +34,8 @@ use Qoliber\Trident\Response\CacheEntriesResponse;
 use Qoliber\Trident\Response\CacheEntryResponse;
 use Qoliber\Trident\Response\CacheStatsResponse;
 use Qoliber\Trident\Response\CacheTagsResponse;
+use Qoliber\Trident\Response\ClearResponse;
+use Qoliber\Trident\Purge\PurgeRequest;
 use Qoliber\Trident\Response\ConfigResponse;
 use Qoliber\Trident\Response\ConnectionsResponse;
 use Qoliber\Trident\Events\EventStream;
@@ -304,17 +307,13 @@ class TridentClient implements TridentClientInterface
 
     public function purgeUrl(string $url, bool $soft = false): PurgeResponse
     {
-        // An absolute URL is sent as path + host + scheme: the engine keys
-        // entries on those separately and does not parse a URL in `url`.
-        $body = SiteUrl::parse($url)->fields();
+        // PurgeRequest builds the engine body: path + host + scheme (the
+        // engine keys entries on those separately and does not parse a URL in
+        // `url`) and an explicit mode (without it the engine applies its
+        // admin.default_purge_mode, so "soft" could silently be hard).
+        $request = PurgeRequest::url($url);
 
-        // Always explicit: without it the engine applies its
-        // admin.default_purge_mode, so "soft" could silently be hard.
-        $body['mode'] = $soft ? 'soft' : 'hard';
-
-        $response = $this->request('POST', '/admin/purge/url', $body);
-
-        return PurgeResponse::fromArray($response, $this->lastStatusCode);
+        return $this->purge($soft ? $request->soft() : $request->hard());
     }
 
     public function purgeUrls(array $urls, bool $soft = false): PurgeResponse
@@ -405,6 +404,37 @@ class TridentClient implements TridentClientInterface
         $response = $this->request('POST', '/admin/cache/clear', $body);
 
         return PurgeResponse::fromArray($response, $this->lastStatusCode);
+    }
+
+    /**
+     * Send a purge exactly as built (1.5.0) — the one purge call where every
+     * option the engine has is available: an explicit soft/hard mode on every
+     * kind (tag, tags and tag-pattern purges included, which the older
+     * methods leave to the engine's admin.default_purge_mode), `exclude_tags`
+     * and the match mode for tag purges, `pattern_type` for tag patterns.
+     *
+     *     $client->purge(PurgeRequest::tags(['cat_5'])->excluding(['home'])->soft());
+     *
+     * A full clear (PurgeRequest::all()) is answered with the clear schema;
+     * see clearCache() for a typed result. A ban is not a purge: createBan().
+     */
+    public function purge(PurgeRequest $request): PurgeResponse
+    {
+        $response = $this->request('POST', $request->engineEndpoint(), $request->toEngineBody());
+
+        return PurgeResponse::fromArray($response, $this->lastStatusCode);
+    }
+
+    /**
+     * Remove every entry on this instance (1.5.0), with the engine's clear
+     * schema typed: whether it cleared, how many entries, how many bytes. A
+     * clear has no soft/hard mode.
+     */
+    public function clearCache(): ClearResponse
+    {
+        $response = $this->request('POST', '/admin/cache/clear', ['confirm' => true]);
+
+        return ClearResponse::fromArray($response, $this->lastStatusCode);
     }
 
     public function purgeHash(string $hash, bool $soft = false): PurgeResponse
@@ -683,10 +713,62 @@ class TridentClient implements TridentClientInterface
      */
     public function explain(string $url, string $method = 'GET', bool $detail = false): Payload
     {
+        return $this->explainRequest($url, $method, [], [], $detail);
+    }
+
+    /**
+     * Ask the engine how it would treat a request (1.5.0): the full request
+     * context `/admin/explain` accepts — method, URL, any request headers,
+     * and cookies (sent as the `Cookie` header, the way a browser would).
+     *
+     * The URL's host becomes the `Host` header unless `$headers` sets one.
+     * The scheme is not sent: the engine has no field for it and evaluates
+     * explain without TLS context, so for an https page only `cacheable` and
+     * `reason` are meaningful; `verdict` and `entry` describe the http key.
+     *
+     * @param array<string, string> $headers Request headers, any case.
+     * @param array<string, string> $cookies Cookie name => value.
+     */
+    public function explainRequest(
+        string $url,
+        string $method = 'GET',
+        array $headers = [],
+        array $cookies = [],
+        bool $detail = false
+    ): Payload {
         $page = SiteUrl::parse($url);
-        $body = ['method' => $method, 'url' => $page->path, 'detail' => $detail];
-        if ($page->host !== null) {
-            $body['headers'] = ['host' => $page->host];
+        $sent = [];
+        foreach ($headers as $name => $value) {
+            $sent[strtolower((string) $name)] = (string) $value;
+        }
+        if ($page->host !== null && !isset($sent['host'])) {
+            $sent['host'] = $page->host;
+        }
+        if ($cookies !== []) {
+            $pairs = [];
+            foreach ($cookies as $name => $value) {
+                // A `;` or `,` would add another cookie, a control character
+                // another header: refused, never silently rewritten.
+                $name = (string) $name;
+                $value = (string) $value;
+                if ($name === '' || preg_match('/[;,=\s\x00-\x1f\x7f]/', $name) === 1
+                    || preg_match('/[;,\x00-\x1f\x7f]/', $value) === 1) {
+                    throw new InvalidRequest(sprintf(
+                        'Cookie %s: a name or value with ";", "," or a control character (or a name with "=" '
+                        . 'or whitespace) would inject another cookie; it was not sent.',
+                        json_encode($name)
+                    ));
+                }
+                $pairs[] = $name . '=' . $value;
+            }
+            $sent['cookie'] = implode('; ', array_filter(
+                [$sent['cookie'] ?? '', implode('; ', $pairs)],
+                static fn (string $part): bool => $part !== ''
+            ));
+        }
+        $body = ['method' => strtoupper($method), 'url' => $page->path, 'detail' => $detail];
+        if ($sent !== []) {
+            $body['headers'] = $sent;
         }
         return new Payload($this->request('POST', '/admin/explain', $body));
     }
@@ -769,6 +851,8 @@ class TridentClient implements TridentClientInterface
      */
     public function denoiserQueryPin(string $param, string $class, string $host = '*', string $pathPrefix = '/'): Payload
     {
+        self::oneOf('class', $class, ['noise', 'signal']);
+        self::required('param', $param);
         return new Payload($this->request('POST', '/admin/denoisers/query/pin', [
             'param' => $param,
             'class' => $class,
@@ -791,6 +875,7 @@ class TridentClient implements TridentClientInterface
      */
     public function denoiserPathPin(string $zoneStatus, string $host = '*', string $pathPrefix = '/'): Payload
     {
+        self::oneOf('status', $zoneStatus, ['dead', 'alive']);
         return new Payload($this->request('POST', '/admin/denoisers/path/pin', [
             'status' => $zoneStatus,
             'host' => $host,
@@ -804,6 +889,59 @@ class TridentClient implements TridentClientInterface
             'host' => $host,
             'path_prefix' => $pathPrefix,
         ]));
+    }
+
+    /**
+     * Forget one learned path zone entirely (1.5.0); 404 when there is none.
+     */
+    public function denoiserPathZoneDelete(string $host = '*', string $pathPrefix = '/'): Payload
+    {
+        return new Payload($this->request('DELETE', '/admin/denoisers/path/zone', [
+            'host' => $host,
+            'path_prefix' => $pathPrefix,
+        ]));
+    }
+
+    /**
+     * Forget one learned query scope entirely (1.5.0).
+     */
+    public function denoiserQueryScopeDelete(string $host = '*', string $pathPrefix = '/'): Payload
+    {
+        return new Payload($this->request('DELETE', '/admin/denoisers/query/scope', [
+            'host' => $host,
+            'path_prefix' => $pathPrefix,
+        ]));
+    }
+
+    /**
+     * What the denoisers learned, as the portable `trident-waf-v1` export
+     * (1.5.0): noise query parameters and dead path zones.
+     */
+    public function wafExport(): Payload
+    {
+        return new Payload($this->request('GET', '/admin/denoisers/export/waf'));
+    }
+
+    /**
+     * @param list<string> $allowed
+     */
+    private static function oneOf(string $field, string $value, array $allowed): void
+    {
+        if (!in_array($value, $allowed, true)) {
+            throw new InvalidRequest(sprintf(
+                'Denoiser %s must be %s; got "%s".',
+                $field,
+                '"' . implode('" or "', $allowed) . '"',
+                $value
+            ));
+        }
+    }
+
+    private static function required(string $field, string $value): void
+    {
+        if (trim($value) === '') {
+            throw new InvalidRequest(sprintf('Denoiser %s must not be empty.', $field));
+        }
     }
 
     /**

@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class TopUrlsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<array{path: string, requests: int, bytes: int, hits: int, misses: int, errors: int, hit_ratio: float, avg_duration_ms: float}> $urls
      * @param array{path: string, requests: int, bytes: int, hits: int, misses: int, errors: int, hit_ratio: float, avg_duration_ms: float}|null $totals
@@ -31,13 +33,13 @@ class TopUrlsResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             windowSecs: (int) ($data['window_secs'] ?? 0),
             trackedUrls: (int) ($data['tracked_urls'] ?? 0),
             sort: (string) ($data['sort'] ?? 'requests'),
             urls: $data['urls'] ?? [],
             totals: $data['totals'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     /**

@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class SnapshotResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $success,
         public readonly ?string $path,
@@ -29,7 +31,7 @@ class SnapshotResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             success: (bool) ($data['success'] ?? false),
             path: isset($data['path']) ? (string) $data['path'] : null,
             entryCount: isset($data['entry_count']) ? (int) $data['entry_count'] : null,
@@ -37,7 +39,7 @@ class SnapshotResponse
             durationMs: isset($data['duration_ms']) ? (int) $data['duration_ms'] : null,
             compressed: isset($data['compressed']) ? (bool) $data['compressed'] : null,
             error: isset($data['error']) ? (string) $data['error'] : null
-        );
+        ))->attachRaw($data);
     }
 
     public function isSuccess(): bool

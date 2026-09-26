@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class ErrorStatsResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<int, int> $byStatus
      * @param array<array{url: string, status: int, time: string}> $recent
@@ -31,13 +33,13 @@ class ErrorStatsResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             totalRequests: (int) ($data['total_requests'] ?? 0),
             totalErrors: (int) ($data['total_errors'] ?? 0),
             errorRate: (float) ($data['error_rate'] ?? 0.0),
             byStatus: $data['by_status'] ?? [],
             recent: $data['recent'] ?? []
-        );
+        ))->attachRaw($data);
     }
 
     public function hasErrors(): bool

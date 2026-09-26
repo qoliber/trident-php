@@ -242,6 +242,74 @@ path, host and scheme.
   sent `type`, which the engine ignored, so a regex tag pattern was purged as a
   wildcard.
 
+## 1.5.0 — a complete admin client
+
+Everything a platform's admin screens need is now on the typed client; the
+lower-level `Admin\Api` is for what the library does not cover yet. Nothing is
+removed or renamed: 1.4.x code runs unchanged (the 1.4.1 test suite passes
+as-is).
+
+- **Every typed response keeps the engine's full answer.** `raw()` returns the
+  decoded JSON it was built from, `payload()` the same answer as a dot-path
+  `Payload` (`$stats->payload()->int('hits')`). `Payload::raw()` is the same
+  for the untyped reads. `toArray()` keeps its 1.4 shape — use `raw()` for
+  the complete answer.
+- **Fields the engine sends are no longer dropped or read under the wrong
+  name** (checked against a live 1.8.0 engine; the old names stay as
+  fallbacks): health uptime (`uptime_seconds`), compressed entries
+  (`current_compressed_entries`), `compressionsTotal`, `tagIndexedKeys`,
+  `urlIndexedKeys`, protection `enabled` (`protection_enabled`) with the
+  `total*` counters and per-backend queue figures (`backends` stays keyed by
+  backend name — the 1.4.1 shape — and each row carries its `name`),
+  memory `footprintPercentiles`, launch `active`, connection `queued`
+  (`waitingRequests`), `totalCreated`, `totalReused`, latency `sampleCount`.
+- **`purge(PurgeRequest)`** sends a purge with every option the engine has:
+  soft/hard on every kind (tag, tags and tag pattern included), `exclude_tags`
+  and the match mode for tags, `pattern_type` for tag patterns. **The mode is
+  sent only when you choose one** (`->soft()` or `->hard()`); a request without
+  either leaves it to the operator's `admin.default_purge_mode`, whose engine
+  default is **soft**. `getMode()` still answers `hard` for such a request (its
+  1.4.1 answer) — `hasExplicitMode()` says whether a mode is sent. `purgeUrl()`
+  keeps sending its explicit mode, as in 1.4.1. `PurgeRequest` gained `hard()`,
+  `excluding()`, `hasExplicitMode()`, `engineEndpoint()` and `toEngineBody()`.
+- **`clearCache(): ClearResponse`** — a full clear typed on the engine's clear
+  schema (`cleared`, `entriesRemoved`, `bytesFreed`, `isAcknowledged()`). A
+  clear has no soft/hard mode. `purgeAll()` is unchanged.
+- **Delivery reports what was purged.** `PurgeAttempt` carries `purged` and
+  `state` (a deferred 202 purge has purged nothing yet: `purged` is null);
+  `DrainReport::$purged` and each instance's `purged` add them up.
+  `PurgeClient::clear()` clears an instance, judged by the clear schema.
+- **`explainRequest($url, $method, $headers, $cookies, $detail)`** — the full
+  request context `/admin/explain` accepts; cookies go in the `Cookie`
+  header, the URL's host becomes `Host` unless given. A cookie name or value
+  that would inject another cookie or header (`;`, `,`, control characters; a
+  name with `=` or whitespace) is refused, not rewritten. The scheme is not sent:
+  the engine evaluates explain without TLS context, so for an https page only
+  `cacheable` and `reason` are meaningful.
+- **`Exception\InvalidRequest`** (a `TridentException`) — a request the client
+  refuses to send: an invalid denoiser pin, an injecting cookie. Code that
+  catches `TridentException` for admin failures, as 1.4.x code does, still
+  catches it; nothing reaches Trident.
+- **Denoisers:** pins are validated before anything is sent (`class`
+  `noise`|`signal`, `status` `dead`|`alive`, a non-empty parameter);
+  `denoiserPathZoneDelete()`, `denoiserQueryScopeDelete()` and `wafExport()`
+  (the `trident-waf-v1` export) are new.
+
+**`TridentClientInterface` is frozen for 1.x.** The new methods (`purge()`,
+`clearCache()`, `explainRequest()`, `wafExport()`, the denoiser deletes) are on
+the `TridentClient` class only: adding methods to the interface would break
+every class that implements it. Type against `TridentClient` to use them.
+
+### Which layer to use (platform authors)
+
+| you need | use |
+|---|---|
+| purges that must not be lost (a product save) | `Delivery\Purger` + your `OutboxStore` — recorded with the change, delivered after commit, retried |
+| one instance, one admin call | `Client\TridentClient` (typed; `raw()`/`payload()` for any field) |
+| the same call on every configured instance | `Admin\Fleet` — one `InstanceResult` per instance, a dead one reported, never thrown |
+| a purge with every engine option | `TridentClient::purge(PurgeRequest …)` |
+| an endpoint the client has no method for yet | `Admin\Api::call()` — the one request path the client itself uses |
+
 ## PSR-15 Middleware
 
 ### Cache Tag Middleware

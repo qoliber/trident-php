@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class BanCreateResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly bool $success,
         public readonly ?string $id = null,
@@ -27,13 +29,13 @@ class BanCreateResponse
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             success: isset($data['id']) || ($data['success'] ?? false),
             id: isset($data['id']) ? (string) $data['id'] : null,
             pattern: $data['pattern'] ?? null,
             expires: $data['expires'] ?? null,
             message: $data['message'] ?? null
-        );
+        ))->attachRaw($data);
     }
 
     public function isSuccess(): bool

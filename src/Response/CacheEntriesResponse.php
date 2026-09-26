@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class CacheEntriesResponse
 {
+    use CarriesRaw;
+
     /**
      * @param array<CacheEntryItem> $entries
      */
@@ -35,13 +37,13 @@ class CacheEntriesResponse
             (array) ($data['entries'] ?? [])
         );
 
-        return new self(
+        return (new self(
             entries: $entries,
             total: (int) ($data['total'] ?? count($entries)),
             offset: (int) ($data['offset'] ?? 0),
             limit: (int) ($data['limit'] ?? 50),
             hasMore: (bool) ($data['has_more'] ?? false)
-        );
+        ))->attachRaw($data);
     }
 
     /**
@@ -94,6 +96,8 @@ class CacheEntriesResponse
 
 class CacheEntryItem
 {
+    use CarriesRaw;
+
     /**
      * @param array<string> $tags
      */
@@ -116,7 +120,7 @@ class CacheEntryItem
      */
     public static function fromArray(array $data): self
     {
-        return new self(
+        return (new self(
             key: (string) ($data['key'] ?? $data['url_key'] ?? ''),
             storageKey: (string) ($data['storage_key'] ?? $data['hash'] ?? ''),
             status: (string) ($data['status'] ?? 'unknown'),
@@ -127,7 +131,7 @@ class CacheEntryItem
             statusCode: (int) ($data['status_code'] ?? 200),
             contentLength: (int) ($data['content_length'] ?? $data['size'] ?? 0),
             contentType: isset($data['content_type']) && is_string($data['content_type']) ? $data['content_type'] : null
-        );
+        ))->attachRaw($data);
     }
 
     public function isFresh(): bool

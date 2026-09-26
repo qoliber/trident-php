@@ -13,6 +13,8 @@ namespace Qoliber\Trident\Response;
 
 class RefreshQueueResponse
 {
+    use CarriesRaw;
+
     public function __construct(
         public readonly int $pending,
         public readonly int $queueCapacity,
@@ -32,7 +34,7 @@ class RefreshQueueResponse
     {
         $stats = $data['stats'] ?? [];
 
-        return new self(
+        return (new self(
             pending: (int) ($data['pending'] ?? 0),
             queueCapacity: (int) ($data['queue_capacity'] ?? 0),
             workers: (int) ($data['workers'] ?? 0),
@@ -41,7 +43,7 @@ class RefreshQueueResponse
             failed: (int) ($stats['failed'] ?? 0),
             duplicates: (int) ($stats['duplicates'] ?? 0),
             queueFull: (int) ($stats['queue_full'] ?? 0)
-        );
+        ))->attachRaw($data);
     }
 
     public function getSuccessRate(): float
