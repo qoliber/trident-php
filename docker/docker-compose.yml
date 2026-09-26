@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  trident:
+    build:
+      context: ../../../
+      dockerfile: integrations/php-library/docker/Dockerfile.trident
+    container_name: trident-php-test
+    ports:
+      - "30080:8080"    # Proxy port
+      - "30100:9100"    # Admin API
+      - "30191:9191"    # Metrics
+    volumes:
+      - ./trident.toml:/etc/trident/trident.toml:ro
+    depends_on:
+      - php-app
+    networks:
+      - trident-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9100/admin/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  php-app:
+    build:
+      context: ./
+      dockerfile: Dockerfile.php
+    container_name: php-app
+    volumes:
+      - ./app:/var/www/html
+      - ../src:/var/www/src
+      - ../tests:/var/www/tests
+      - ../composer.json:/var/www/composer.json
+      - ../phpunit.xml:/var/www/phpunit.xml:ro
+    networks:
+      - trident-net
+    environment:
+      - TRIDENT_ADMIN_URL=http://trident:9100
+      - TRIDENT_ADMIN_KEY=test-admin-key-12345
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-php
+    ports:
+      - "30000:80"
+    volumes:
+      - ./app:/var/www/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - php-app
+    networks:
+      - trident-net
+
+networks:
+  trident-net:
+    driver: bridge

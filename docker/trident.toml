@@ -1,0 +1,77 @@
+# Trident Configuration for PHP Library Testing
+# Simplified config based on tests/trident-core/system/docker/configs/trident-test.toml
+
+[server]
+listeners = [
+    { address = "0.0.0.0:8080", protocol = "http1" },
+]
+
+[server.limits]
+max_connections = 1000
+max_connections_per_ip = 100
+
+[server.timeouts]
+connect = "5s"
+header_read = "10s"
+body_read = "30s"
+backend_connect = "5s"
+backend_first_byte = "10s"
+
+[cache]
+max_memory = "256MB"
+max_entries = 10000
+grace_period = "5m"
+
+[ttl]
+mode = "origin"
+default = "1h"
+max = "24h"
+
+[cache.key]
+hash_algorithm = "xxhash3"
+i_understand_collisions = true  # CRIT-6: trusted internal/test deployment
+include_query = true
+normalize_query = true
+normalize_path = true
+
+[cache.coalesce]
+enabled = true
+timeout = "30s"
+
+# Cache tags - expose to clients for testing
+[cache.tags]
+strip_header = false
+
+# Admin API
+[admin]
+enabled = true
+address = "0.0.0.0:9100"
+auth_token = "test-admin-key-12345"
+
+# Metrics
+[metrics]
+enabled = true
+address = "0.0.0.0:9191"
+
+# Backend - nginx container
+# Cache poisoning protection (REQUIRED for production behind a reverse proxy).
+# List every public hostname Trident serves. Without this, the fail-closed
+# guard returns 400 Bad Request to any non-loopback Host header.
+# Hot-reloadable: edit + `systemctl reload trident` — no restart needed.
+# Docs: https://devdocs.trident-cache.com/docs/core/configuration/cache-poisoning
+[cache.poisoning]
+enabled = true
+known_hosts = ["yourdomain.com", "www.yourdomain.com"]
+
+
+[[backends]]
+name = "php"
+host = "nginx"
+port = 80
+health = { path = "/health", interval = "10s", timeout = "5s", threshold_unhealthy = 3 }
+
+# Director
+[[directors]]
+name = "default"
+backends = ["php"]
+strategy = "round_robin"
