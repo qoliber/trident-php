@@ -106,6 +106,114 @@ final class ClientEndpointsTest extends TestCase
         self::assertCount(2, $p->rows('results'));
     }
 
+    /**
+     * The bulk endpoint takes paths plus ONE host and scheme; absolute URLs
+     * sent as-is were keyed under the engine's own listener and purged
+     * nothing. Grouped by origin, one request each, counts summed.
+     */
+    public function testPurgeUrlsGroupsAbsoluteUrlsByHostAndScheme(): void
+    {
+        $this->t->answer('edge', 200, '{"total_purged":1,"results":[{"url":"x","purged":1}],"mode":"hard"}');
+        $r = $this->c->purgeUrls(['http://shop.example:8580/a', 'http://shop.example:8580/b?x=1', 'https://other.example/c']);
+        $sent = array_map(static fn (array $q): array => json_decode((string) $q['body'], true), $this->t->requests);
+        self::assertSame([
+            ['urls' => ['/a', '/b?x=1'], 'host' => 'shop.example:8580', 'scheme' => 'http', 'mode' => 'hard'],
+            ['urls' => ['/c'], 'host' => 'other.example', 'scheme' => 'https', 'mode' => 'hard'],
+        ], $sent);
+        self::assertSame(2, $r->purgedCount);
+        self::assertTrue($r->isAcknowledged());
+        self::assertSame([['url' => 'x', 'purged' => 1], ['url' => 'x', 'purged' => 1]], $r->raw()['results'], 'results of every group');
+    }
+
+    public function testPurgeUrlsWithPathsIsOneRequestAsBefore(): void
+    {
+        $this->t->answer('edge', 200, '{"total_purged":3,"results":[],"mode":"soft"}');
+        $r = $this->c->purgeUrls(['/a', '/b'], true);
+        self::assertSame(['urls' => ['/a', '/b'], 'mode' => 'soft'], $this->sent()['body']);
+        self::assertCount(1, $this->t->requests);
+        self::assertSame(3, $r->purgedCount, '1.5 reported 0: the bulk answer has total_purged, not purged');
+        self::assertTrue($r->isAcknowledged(), '1.5 never acknowledged a bulk purge');
+    }
+
+    public function testPathsAndUrlsMixedAreTwoGroups(): void
+    {
+        $this->t->answer('edge', 200, '{"total_purged":1,"results":[],"mode":"hard"}');
+        $r = $this->c->purgeUrls(['/a', 'http://shop.example/b']);
+        self::assertCount(2, $this->t->requests);
+        self::assertSame(['urls' => ['/a'], 'mode' => 'hard'], json_decode((string) $this->t->requests[0]['body'], true));
+        self::assertSame(2, $r->purgedCount);
+    }
+
+    public function testAGroupThatIsNotAcknowledgedMakesTheWholePurgeUnacknowledged(): void
+    {
+        $this->t->then('edge', 200, '{"total_purged":1,"results":[],"mode":"hard"}')
+            ->then('edge', 200, '{"results":[]}');
+        $r = $this->c->purgeUrls(['http://a.example/x', 'http://b.example/y']);
+        self::assertFalse($r->isAcknowledged(), 'one group answered without an acknowledgement');
+        self::assertSame(1, $r->purgedCount);
+        self::assertStringContainsString('not acknowledged on http://b.example', (string) $r->failure);
+    }
+
+    public function testAFailingLaterGroupIsReportedNotThrown(): void
+    {
+        $this->t->then('edge', 200, '{"total_purged":2,"results":[],"mode":"hard"}')
+            ->then('edge', 503, '{"error":"busy"}');
+        $r = $this->c->purgeUrls(['http://a.example/x', 'http://b.example/y']);
+        self::assertFalse($r->isAcknowledged());
+        self::assertFalse($r->isSuccess(), 'a partial purge is not a success');
+        self::assertStringContainsString('purged on http://a.example', (string) $r->failure);
+        self::assertStringContainsString('503', (string) $r->failure);
+        self::assertCount(1, $r->raw()['failed_groups']);
+    }
+
+    public function testEveryGroupFailingThrowsAsIn15(): void
+    {
+        $this->t->then('edge', 503, '{"error":"busy"}')->then('edge', 503, '{"error":"busy"}');
+        $this->expectException(\Qoliber\Trident\Exception\TridentException::class);
+        $this->expectExceptionMessage('every host');
+        $this->c->purgeUrls(['http://a.example/x', 'http://b.example/y']);
+    }
+
+    public function testAnsweredButNotAcknowledgedIsASuccessAsIn15ButNotAcknowledged(): void
+    {
+        $this->t->answer('edge', 200, '{"results":[]}');
+        $r = $this->c->purgeUrls(['http://a.example/x', 'http://b.example/y']);
+        self::assertTrue($r->isSuccess());
+        self::assertFalse($r->isAcknowledged());
+    }
+
+    public function testASingleFailingGroupThrowsItsOwnError(): void
+    {
+        $this->t->answer('edge', 401, '{"error":"Unauthorized"}');
+        $this->expectException(\Qoliber\Trident\Admin\ApiError::class);
+        $this->c->purgeUrls(['/a']);
+    }
+
+    public function testMixed200And202RecordedIsAcknowledged(): void
+    {
+        $this->t->then('edge', 200, '{"total_purged":1,"results":[],"mode":"hard"}')
+            ->then('edge', 202, '{"status":"deferred","state":"recorded","mode":"hard"}');
+        $r = $this->c->purgeUrls(['http://a.example/x', 'http://b.example/y']);
+        self::assertTrue($r->isAcknowledged());
+        self::assertSame('recorded', $r->state);
+    }
+
+    public function testMixed200And202NotRecordedIsNot(): void
+    {
+        $this->t->then('edge', 200, '{"total_purged":1,"results":[],"mode":"hard"}')
+            ->then('edge', 202, '{"status":"queued"}');
+        self::assertFalse($this->c->purgeUrls(['http://a.example/x', 'http://b.example/y'])->isAcknowledged());
+    }
+
+    public function testCoverageCanAskForAnotherMethod(): void
+    {
+        $this->t->answer('edge', 200, '{"total":1,"cached":0,"uncached":1,"percent_cached":0.0,"results":[]}');
+        $this->c->coverage(['/shop/'], 'localhost:8480', null, 'head');
+        self::assertSame(['urls' => ['/shop/'], 'host' => 'localhost:8480', 'method' => 'HEAD'], $this->sent()['body']);
+        $this->c->coverage(['/shop/']);
+        self::assertArrayNotHasKey('method', $this->sent()['body'], 'no method: the engine default (GET) applies');
+    }
+
     public function testExplainSendsThePathAndAHostHeader(): void
     {
         $this->c->explain('http://localhost:8480/shop/');
@@ -149,8 +257,8 @@ final class ClientEndpointsTest extends TestCase
 
     public function testDenoisers(): void
     {
-        $this->c->denoiserQueryPin('utm_x', 'noise');
-        self::assertSame(['param' => 'utm_x', 'class' => 'noise', 'host' => '*', 'path_prefix' => '/'], $this->sent()['body']);
+        $this->c->denoiserQueryPin('utm_x', 'noise', 'shop.example');
+        self::assertSame(['param' => 'utm_x', 'class' => 'noise', 'host' => 'shop.example', 'path_prefix' => '/'], $this->sent()['body']);
         $this->c->denoiserPathPin('dead', 'shop.example', '/search/');
         self::assertSame(['status' => 'dead', 'host' => 'shop.example', 'path_prefix' => '/search/'], $this->sent()['body']);
         $this->c->denoiserReset('path');

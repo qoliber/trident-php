@@ -23,6 +23,7 @@ use Qoliber\Trident\Delivery\Instance;
 use Qoliber\Trident\Delivery\Instances;
 use Qoliber\Trident\Delivery\Psr18Transport;
 use Qoliber\Trident\Delivery\Transport;
+use Qoliber\Trident\Delivery\Acknowledgement;
 use Qoliber\Trident\Exception\InvalidRequest;
 use Qoliber\Trident\Exception\TridentException;
 use Qoliber\Trident\Response\BackendActionResponse;
@@ -318,17 +319,98 @@ class TridentClient implements TridentClientInterface
 
     public function purgeUrls(array $urls, bool $soft = false): PurgeResponse
     {
-        $body = [
-            'urls' => $urls,
-        ];
-
-        // Always explicit: without it the engine applies its
+        // The engine's bulk endpoint takes PATHS plus one `host` and `scheme`
+        // (defaulting to its own listener) and does not parse a URL in `urls`:
+        // absolute URLs sent as-is purged nothing. They are grouped by host
+        // and scheme, one request per group; paths go as before. The mode is
+        // always explicit: without it the engine applies its
         // admin.default_purge_mode, so "soft" could silently be hard.
-        $body['mode'] = $soft ? 'soft' : 'hard';
+        $mode = $soft ? 'soft' : 'hard';
+        $groups = [];
+        foreach ($urls as $url) {
+            $url = (string) $url;
+            if (preg_match('#^https?://#i', $url) === 1) {
+                $site = \Qoliber\Trident\Admin\SiteUrl::parse($url);
+                $groups[(string) $site->scheme . '://' . (string) $site->host][] = $site->path;
+            } else {
+                $groups[''][] = $url;
+            }
+        }
+        if ($groups === []) {
+            $groups[''] = [];
+        }
 
-        $response = $this->request('POST', '/admin/purge/urls', $body);
+        // Each group is its own purge and is judged on its own (the bulk
+        // answer has `total_purged`, not `purged`): the merged result is
+        // acknowledged only when EVERY group was — a 200 with the schema or a
+        // 202 `recorded` — so a caller never drops a purge one origin refused.
+        $purged = 0;
+        $results = [];
+        $failures = [];
+        $unacked = [];
+        $lastError = null;
+        $done = [];
+        $deferred = false;
+        foreach ($groups as $origin => $paths) {
+            $label = $origin === '' ? 'paths' : (string) $origin;
+            $body = ['urls' => array_values($paths)];
+            if ($origin !== '') {
+                [$scheme, $host] = explode('://', (string) $origin, 2);
+                $body['host'] = $host;
+                $body['scheme'] = $scheme;
+            }
+            $body['mode'] = $mode;
+            try {
+                $answer = $this->request('POST', '/admin/purge/urls', $body);
+            } catch (TridentException $e) {
+                $failures[] = sprintf('%s: %s', $label, $e->getMessage());
+                $lastError = $e;
+                continue;
+            }
+            $status = (int) $this->lastStatusCode;
+            $judged = $answer;
+            if (is_int($answer['total_purged'] ?? null)) {
+                $judged['purged'] = $answer['total_purged'];
+            }
+            // Counted whether or not the group is acknowledged. Count: the engine's total_purged; an older answer's int `purged`.
+            $purged += is_int($answer['total_purged'] ?? null) ? $answer['total_purged'] : (is_int($answer['purged'] ?? null) ? $answer['purged'] : 0);
+            $failure = Acknowledgement::purgeFailure($status, (string) json_encode($judged));
+            $done[] = $label;
+            if ($failure !== null) {
+                // Answered, but not an acknowledgement: not a failed request
+                // (1.5 reported it as a success) — just not acknowledged.
+                $unacked[] = sprintf('%s: %s', $label, $failure);
+                continue;
+            }
+            $deferred = $deferred || $status === 202;
+            $results = array_merge($results, (array) ($answer['results'] ?? []));
+        }
 
-        return PurgeResponse::fromArray($response, $this->lastStatusCode);
+        $merged = ['total_purged' => $purged, 'results' => $results, 'mode' => $mode];
+        if ($failures === [] && $unacked === []) {
+            $merged['purged'] = $purged;
+            if ($deferred) {
+                $merged['state'] = 'recorded';
+            }
+            return PurgeResponse::fromArray($merged, 200);
+        }
+        if ($failures === []) {
+            // Every request answered; some not with an acknowledgement.
+            $merged['purged_count'] = $purged;
+            $merged['error'] = 'not acknowledged on ' . implode('; ', $unacked);
+            return PurgeResponse::fromArray($merged, 200);
+        }
+        // No group purged: an error, as in 1.5 (which threw on any failure).
+        if ($done === []) {
+            if ($lastError !== null && count($failures) === 1) {
+                throw $lastError;
+            }
+            throw new TridentException('Purge failed on every host: ' . implode('; ', $failures));
+        }
+        // Some purged, some did not: neither a success nor acknowledged, with
+        // the failed groups named.
+        $merged['failed_groups'] = $failures;
+        return PurgeResponse::partial($purged, $mode, sprintf('purged on %s; failed on %s', implode(', ', $done), implode('; ', array_merge($failures, $unacked))), $merged);
     }
 
     public function purgeUrlPattern(string $pattern, bool $soft = false): PurgeResponse
@@ -682,7 +764,7 @@ class TridentClient implements TridentClientInterface
      *
      * @param list<string> $paths
      */
-    public function coverage(array $paths, ?string $host = null, ?string $scheme = null): Payload
+    public function coverage(array $paths, ?string $host = null, ?string $scheme = null, ?string $method = null): Payload
     {
         $body = ['urls' => array_values($paths)];
         if ($host !== null) {
@@ -690,6 +772,11 @@ class TridentClient implements TridentClientInterface
         }
         if ($scheme !== null) {
             $body['scheme'] = $scheme;
+        }
+        // The engine checks GET entries unless told otherwise
+        // (CacheCoverageRequest.method): a HEAD-only warm-up is another key.
+        if ($method !== null && $method !== '') {
+            $body['method'] = strtoupper($method);
         }
         return new Payload($this->request('POST', '/admin/cache/coverage', $body));
     }
@@ -848,11 +935,13 @@ class TridentClient implements TridentClientInterface
 
     /**
      * @param string $class `noise` | `signal`.
+     * @param string $host  The site's host (`host[:port]`); `*` or empty is refused (see pinHost()).
      */
     public function denoiserQueryPin(string $param, string $class, string $host = '*', string $pathPrefix = '/'): Payload
     {
         self::oneOf('class', $class, ['noise', 'signal']);
         self::required('param', $param);
+        $host = self::pinHost($host);
         return new Payload($this->request('POST', '/admin/denoisers/query/pin', [
             'param' => $param,
             'class' => $class,
@@ -872,10 +961,12 @@ class TridentClient implements TridentClientInterface
 
     /**
      * @param string $zoneStatus `dead` | `alive`.
+     * @param string $host       The site's host (`host[:port]`); `*` or empty is refused (see pinHost()).
      */
     public function denoiserPathPin(string $zoneStatus, string $host = '*', string $pathPrefix = '/'): Payload
     {
         self::oneOf('status', $zoneStatus, ['dead', 'alive']);
+        $host = self::pinHost($host);
         return new Payload($this->request('POST', '/admin/denoisers/path/pin', [
             'status' => $zoneStatus,
             'host' => $host,
@@ -935,6 +1026,27 @@ class TridentClient implements TridentClientInterface
                 $value
             ));
         }
+    }
+
+    /**
+     * A pin applies to one real host. The engine keys learned scopes and zones
+     * as `{host}|{path_prefix}` with the REQUEST's host and has no `*`
+     * fallback, so a pin on `*` (or on no host) is accepted and never used.
+     * Unpin and delete still take `*`, to clean such pins up.
+     */
+    private static function pinHost(string $host): string
+    {
+        // Sent as the engine keys it: query scopes hash the host verbatim,
+        // path zones lowercase it — trimmed and lowercased matches both.
+        $host = strtolower(trim($host));
+        if ($host === '' || $host === '*') {
+            throw new InvalidRequest(sprintf(
+                'Denoiser pins need the site\'s host (host[:port]); "%s" matches no request — the engine keys pins by the request host and has no wildcard.',
+                $host
+            ));
+        }
+
+        return $host;
     }
 
     private static function required(string $field, string $value): void

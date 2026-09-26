@@ -52,7 +52,7 @@ final class Instances
                 return [[], []];
             }
             if (!self::isHttpUrl($defaultUrl)) {
-                return [[], [sprintf('API URL "%s" is not an http(s) URL', $defaultUrl)]];
+                return [[], [sprintf('API URL "%s" must be scheme://host[:port][/path] (http or https; no query, fragment or credentials)', $defaultUrl)]];
             }
             return [[new Instance(self::DEFAULT_NAME, rtrim($defaultUrl, '/'), $defaultToken)], []];
         }
@@ -78,7 +78,7 @@ final class Instances
                 continue;
             }
             if (!self::isHttpUrl($url)) {
-                $errors[] = sprintf('%s: api_url "%s" is not an http(s) URL', $name, $url);
+                $errors[] = sprintf('%s: api_url "%s" must be scheme://host[:port][/path] (http or https; no query, fragment or credentials)', $name, $url);
                 continue;
             }
             if (isset($seen[$name])) {
@@ -94,10 +94,22 @@ final class Instances
         return [$instances, $errors];
     }
 
-    private static function isHttpUrl(string $url): bool
+    /**
+     * An API URL is `scheme://host[:port][/base-path]` and nothing else: no
+     * query, fragment or userinfo. Anything else would let the `/admin/…` path
+     * the client appends land somewhere unintended (in a query string, say),
+     * turning a Trident screen into a reader of another internal service.
+     */
+    public static function isHttpUrl(string $url): bool
     {
-        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-        $host = (string) parse_url($url, PHP_URL_HOST);
-        return ($scheme === 'http' || $scheme === 'https') && $host !== '';
+        $parts = parse_url($url);
+        if (!is_array($parts)) {
+            return false;
+        }
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        return ($scheme === 'http' || $scheme === 'https')
+            && (string) ($parts['host'] ?? '') !== ''
+            && !isset($parts['query'], $parts['fragment'], $parts['user'], $parts['pass'])
+            && !str_contains($url, '?') && !str_contains($url, '#') && !isset($parts['user']) && !isset($parts['pass']);
     }
 }

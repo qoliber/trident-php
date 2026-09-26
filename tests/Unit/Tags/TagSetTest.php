@@ -83,4 +83,46 @@ final class TagSetTest extends TestCase
         $set->addAll(['a', 'b', 'c', 'd']);
         self::assertSame(['s1_a', 's1_b', 's1_list_overflow'], $set->toArray());
     }
+
+    public function testADroppedTagOfAFamilyAddsThatFamilysOverflowTagOnly(): void
+    {
+        $set = new TagSet('', 'overflow', 10, 4096, ['/^product-[0-9a-f]+$/' => 'overflow_product']);
+        $set->add('listing-a', TagSet::IDENTITY);
+        for ($i = 0; $i < 20; ++$i) {
+            $set->add(sprintf('product-%04x', $i), TagSet::REFERENCE);
+        }
+        $out = $set->toArray();
+        self::assertLessThanOrEqual(10, count($out));
+        self::assertContains('listing-a', $out);
+        self::assertContains('overflow_product', $out);
+        self::assertNotContains('overflow', $out, 'only product tags were dropped');
+    }
+
+    public function testADroppedTagOutsideEveryFamilyAddsTheGeneralOverflowTag(): void
+    {
+        $set = new TagSet('', 'overflow', 4, 4096, ['/^product-/' => 'overflow_product']);
+        foreach (['a', 'b', 'c', 'd', 'e', 'f'] as $t) {
+            $set->add($t);
+        }
+        self::assertContains('overflow', $set->toArray());
+        self::assertNotContains('overflow_product', $set->toArray());
+    }
+
+    public function testAPurgeCarriesOnlyTheOverflowTagsOfItsKinds(): void
+    {
+        $families = ['/^product-[0-9a-f]+$/' => 'overflow_product'];
+        self::assertSame(['p_overflow_product'], TagSet::overflowTagsFor(['product-ab', 'product-cd'], 'p_', 'overflow', $families));
+        self::assertSame(['p_overflow'], TagSet::overflowTagsFor(['category-route-x'], 'p_', 'overflow', $families));
+        self::assertSame(['p_overflow_product', 'p_overflow'], TagSet::overflowTagsFor(['product-ab', 'navigation'], 'p_', 'overflow', $families));
+        self::assertSame([], TagSet::overflowTagsFor([], 'p_', 'overflow', $families));
+    }
+
+    public function testWithoutFamiliesNothingChanges(): void
+    {
+        $set = new TagSet('', 'overflow', 3);
+        foreach (['a', 'b', 'c', 'd'] as $t) {
+            $set->add($t);
+        }
+        self::assertSame(['a', 'b', 'overflow'], $set->toArray());
+    }
 }

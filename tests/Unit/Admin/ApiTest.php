@@ -232,4 +232,17 @@ final class ApiTest extends TestCase
             self::assertStringNotContainsString('super-secret-token', $e->getMessage());
         }
     }
+
+    public function testAnErrorBodyIsClippedAndCleaned(): void
+    {
+        $t = (new FakeTransport())->answer('edge-1', 500, "{\"error\":\"" . str_repeat('x', 2000) . "\u0007\"}");
+        try {
+            $this->api($t)->call('GET', '/admin/status');
+            self::fail('expected ApiError');
+        } catch (ApiError $e) {
+            self::assertLessThanOrEqual(ApiError::CLIP + 40, mb_strlen($e->getMessage()));
+            self::assertLessThanOrEqual(ApiError::CLIP, mb_strlen((string) $e->engineMessage));
+            self::assertDoesNotMatchRegularExpression('/[\x00-\x1F]/', $e->getMessage());
+        }
+    }
 }

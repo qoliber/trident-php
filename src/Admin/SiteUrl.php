@@ -42,8 +42,18 @@ final class SiteUrl
         if ($parts === false) {
             throw new \InvalidArgumentException(sprintf('Not a URL: %s', $url));
         }
-        $host = isset($parts['host']) ? strtolower($parts['host']) . (isset($parts['port']) ? ':' . $parts['port'] : '') : $defaultHost;
         $scheme = isset($parts['scheme']) ? strtolower($parts['scheme']) : $defaultScheme;
+        $host = $defaultHost;
+        if (isset($parts['host'])) {
+            // The key a browser's request lands under: an ASCII (punycode) host,
+            // and no port when it is the scheme's default.
+            $host = self::asciiHost(strtolower($parts['host']));
+            $port = $parts['port'] ?? null;
+            $default = ['http' => 80, 'https' => 443][$scheme ?? ''] ?? null;
+            if ($port !== null && $port !== $default) {
+                $host .= ':' . $port;
+            }
+        }
         if ($scheme !== null && !in_array($scheme, ['http', 'https'], true)) {
             throw new \InvalidArgumentException(sprintf('Not an http(s) URL: %s', $url));
         }
@@ -55,6 +65,20 @@ final class SiteUrl
             $path .= '?' . $parts['query'];
         }
         return new self($path, $host, $scheme);
+    }
+
+    /**
+     * IDN host to ASCII (punycode). Needs ext-intl; without it a non-ASCII host
+     * is kept as written and will not match the browser's key (documented).
+     */
+    private static function asciiHost(string $host): string
+    {
+        if (preg_match('/[^\x20-\x7e]/', $host) !== 1 || !function_exists('idn_to_ascii')) {
+            return $host;
+        }
+        $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+
+        return is_string($ascii) && $ascii !== '' ? $ascii : $host;
     }
 
     /**

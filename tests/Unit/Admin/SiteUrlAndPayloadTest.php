@@ -20,6 +20,26 @@ use Qoliber\Trident\Events\EventStream;
 final class SiteUrlAndPayloadTest extends TestCase
 {
     /**
+     * A browser never sends the scheme's default port in Host: the key is
+     * `shop.example`, not `shop.example:443`.
+     */
+    public function testTheSchemesDefaultPortIsDropped(): void
+    {
+        self::assertSame('shop.example', SiteUrl::parse('https://shop.example:443/a')->host);
+        self::assertSame('shop.example', SiteUrl::parse('http://shop.example:80/a')->host);
+        self::assertSame('shop.example:8443', SiteUrl::parse('https://shop.example:8443/a')->host);
+        self::assertSame('shop.example:443', SiteUrl::parse('http://shop.example:443/a')->host, 'not the default for http');
+    }
+
+    public function testAnIdnHostIsPunycode(): void
+    {
+        if (!function_exists('idn_to_ascii')) {
+            self::markTestSkipped('ext-intl not loaded: IDN hosts are kept as written (documented limit)');
+        }
+        self::assertSame('xn--weki-pqa88b6m.pl', SiteUrl::parse('https://żółweki.pl/x')->host);
+    }
+
+    /**
      * @return array<string, array{string, array<string, string>}>
      */
     public static function urls(): array

@@ -42,6 +42,24 @@ class PurgeResponse
     }
 
     /**
+     * A purge that reached some targets and not others (purgeUrls() over
+     * several hosts): not a success, not acknowledged, the failures named.
+     *
+     * @param array<string, mixed> $raw
+     */
+    public static function partial(int $purged, ?string $mode, string $failure, array $raw): self
+    {
+        return (new self(
+            success: false,
+            purgedCount: $purged,
+            mode: $mode,
+            message: $failure,
+            acknowledged: false,
+            failure: $failure
+        ))->attachRaw($raw);
+    }
+
+    /**
      * @param array<string, mixed> $data       Decoded response body.
      * @param int|null             $statusCode HTTP status. The client only returns bodies
      *                                         of successful responses, so null means 200.

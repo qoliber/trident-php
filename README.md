@@ -310,6 +310,61 @@ every class that implements it. Type against `TridentClient` to use them.
 | a purge with every engine option | `TridentClient::purge(PurgeRequest …)` |
 | an endpoint the client has no method for yet | `Admin\Api::call()` — the one request path the client itself uses |
 
+## 1.6.0 (unreleased)
+
+- **`Admin\WafView`** — the part of an instance's WAF export
+  (`wafExport()`) and learned query scopes (`denoiserQueryScopes()`) that
+  belongs to one shop: `deadZones($export, $hosts)` and `noise($scopes,
+  $hosts)` keep the shop's own host(s), plus the `*` rows marked `inert`
+  (no `*` fallback in the engine: old wildcard pins that apply to nothing and
+  can be removed with unpin). The export is global
+  on a shared Trident; a shop's screen must not list other shops' paths. Shared
+  by the WooCommerce plugin and the Shopware plugin (it used to live in the
+  WooCommerce plugin only).
+- **Denoiser pins need a real host.** `denoiserQueryPin()` and
+  `denoiserPathPin()` throw `InvalidRequest` for host `*` or an empty host
+  (including the old `*` default). The engine keys learned scopes and zones as
+  `{host}|{path_prefix}` with the request's host and has no wildcard fallback,
+  so such a pin was accepted and never applied. Unpin and zone/scope delete
+  still take `*`, to clean such pins up. **Behaviour change:** a caller that
+  pinned on `*` (or relied on the default) now gets an exception instead of a
+  silently inert pin.
+- **`purgeUrls()` is fixed.** In 1.5 it was never acknowledged and always
+  reported 0 purged: the engine's bulk answer carries `total_purged`, not
+  `purged`. And absolute URLs purged nothing, because the bulk endpoint takes
+  paths plus one `host`/`scheme`. Now:
+  - URLs are grouped by origin (paths form a group of their own), one request
+    per group;
+  - each group is judged on its own (a 200 with the schema or a 202
+    `recorded`), and the result is acknowledged only when every group is;
+  - every request failing throws, as 1.5 did;
+  - some failing gives `isSuccess()` false and `isAcknowledged()` false, with
+    the failed groups in `failure` and `raw()['failed_groups']`;
+  - an answer that is not an acknowledgement counts as a success, as in 1.5,
+    but not as acknowledged;
+  - `purgedCount` is the sum of the groups' `total_purged`.
+- **`SiteUrl::parse()`** drops the scheme's default port
+  (`https://shop.example:443/a` → host `shop.example`) and converts an IDN host
+  to punycode, so `purgeUrl()`/`purgeUrls()` hit the browser's key. The IDN
+  conversion needs ext-intl; without it a non-ASCII host is kept as written.
+- **Denoiser pin hosts** are sent trimmed and lowercased, as the engine keys
+  them.
+- **API URLs are `scheme://host[:port][/base-path]` only** (`Instances::parse`,
+  `Instances::isHttpUrl`). A query, fragment or credentials are refused: the
+  client appends `/admin/…`, and a query string would carry that path to
+  another service.
+- **`ApiError` clips answer bodies** (message and `engineMessage`) to 300
+  characters without control characters. What answered is not necessarily
+  Trident, and its body must never land on a screen whole.
+- **Per-kind overflow tags (`TagSet`, optional):** pass `$overflowFamilies`
+  (regex → overflow tag) and a dropped tag of a family adds THAT family's
+  overflow tag instead of the general one; `TagSet::overflowTagsFor()` gives a
+  purge only the overflow tags of the kinds it carries. An over-tagged listing
+  is then refreshed by a product save, not by every unrelated save. Without the
+  argument nothing changes.
+- **`coverage()` takes the method** the engine checks (`CacheCoverageRequest.method`,
+  default GET): `coverage($paths, $host, $scheme, 'HEAD')`.
+
 ## PSR-15 Middleware
 
 ### Cache Tag Middleware

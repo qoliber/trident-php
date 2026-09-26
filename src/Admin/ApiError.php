@@ -23,6 +23,8 @@ use Qoliber\Trident\Exception\TridentException;
  */
 final class ApiError extends TridentException
 {
+    public const CLIP = 300;
+
     public function __construct(
         string $message,
         int $status,
@@ -46,7 +48,26 @@ final class ApiError extends TridentException
                 }
             }
         }
-        return new self(sprintf('Trident API error (HTTP %d): %s', $status, $body), $status, $code, $detail);
+        return new self(
+            sprintf('Trident API error (HTTP %d): %s', $status, self::clip($body)),
+            $status,
+            $code,
+            $detail !== null ? self::clip($detail) : null
+        );
+    }
+
+    /**
+     * An answer body shown to people: at most CLIP characters, no control
+     * characters. Whatever answered (possibly not Trident) never lands on a
+     * screen whole.
+     */
+    public static function clip(string $text): string
+    {
+        $text = trim((string) preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $text));
+        if (function_exists('mb_substr') ? mb_strlen($text) > self::CLIP : strlen($text) > self::CLIP) {
+            $text = (function_exists('mb_substr') ? mb_substr($text, 0, self::CLIP - 1) : substr($text, 0, self::CLIP - 1)) . '…';
+        }
+        return $text;
     }
 
     public function status(): int

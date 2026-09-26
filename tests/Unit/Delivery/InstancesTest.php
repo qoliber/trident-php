@@ -85,4 +85,38 @@ final class InstancesTest extends TestCase
         self::assertSame([], $instances);
         self::assertCount(1, $errors);
     }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function notAnApiUrl(): array
+    {
+        return [
+            'query'       => ['http://opensearch:9200/idx/_search?q='],
+            'fragment'    => ['http://trident:9301/#x'],
+            'userinfo'    => ['http://user:pass@trident:9301'],
+            'ftp'         => ['ftp://trident:9301'],
+            'no host'     => ['http:///admin'],
+        ];
+    }
+
+    /**
+     * The client appends `/admin/…`: a query or fragment would carry it
+     * somewhere else (into another service's query string).
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('notAnApiUrl')]
+    public function testOnlySchemeHostPortAndBasePathAreAccepted(string $url): void
+    {
+        [$list, $errors] = Instances::parse(null, $url, 't');
+        self::assertSame([], $list);
+        self::assertStringContainsString('scheme://host', $errors[0]);
+        [$list] = Instances::parse(['x' => ['api_url' => $url]], '', 't');
+        self::assertSame([], $list);
+    }
+
+    public function testABasePathIsFine(): void
+    {
+        [$list] = Instances::parse(null, 'https://edge.example:9301/trident/', 't');
+        self::assertSame('https://edge.example:9301/trident', $list[0]->apiUrl);
+    }
 }

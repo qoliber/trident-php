@@ -24,6 +24,9 @@ use Qoliber\Trident\TridentFactory;
  */
 final class AdminApiIntegrationTest extends TestCase
 {
+    /** A pin needs a real host (the engine keys pins by the request host). */
+    private const PIN_HOST = 'lib-it.example';
+
     private TridentClient $client;
 
     protected function setUp(): void
@@ -160,7 +163,7 @@ final class AdminApiIntegrationTest extends TestCase
     public function testQueryDenoiserPinRoundTrip(): void
     {
         try {
-            $pin = $this->client->denoiserQueryPin('lib15_param', 'noise', '*', '/lib15/');
+            $pin = $this->client->denoiserQueryPin('lib15_param', 'noise', self::PIN_HOST, '/lib15/');
         } catch (ApiError $e) {
             if ($e->status() === 503) {
                 self::markTestSkipped('The query denoiser is not enabled on this engine.');
@@ -168,15 +171,15 @@ final class AdminApiIntegrationTest extends TestCase
             throw $e;
         }
         self::assertNotSame([], $pin->raw());
-        $this->client->denoiserQueryUnpin('lib15_param', '*', '/lib15/');
-        $this->client->denoiserQueryScopeDelete('*', '/lib15/');
+        $this->client->denoiserQueryUnpin('lib15_param', self::PIN_HOST, '/lib15/');
+        $this->client->denoiserQueryScopeDelete(self::PIN_HOST, '/lib15/');
         $this->addToAssertionCount(1);
     }
 
     public function testPathDenoiserPinRoundTrip(): void
     {
         try {
-            $pin = $this->client->denoiserPathPin('dead', '*', '/lib15-old/');
+            $pin = $this->client->denoiserPathPin('dead', self::PIN_HOST, '/lib15-old/');
         } catch (ApiError $e) {
             if ($e->status() === 503) {
                 self::markTestSkipped('The path denoiser is not enabled on this engine.');
@@ -184,8 +187,8 @@ final class AdminApiIntegrationTest extends TestCase
             throw $e;
         }
         self::assertSame('dead', $pin->string('status'));
-        $this->client->denoiserPathUnpin('*', '/lib15-old/');
-        $gone = $this->client->denoiserPathZoneDelete('*', '/lib15-old/');
+        $this->client->denoiserPathUnpin(self::PIN_HOST, '/lib15-old/');
+        $gone = $this->client->denoiserPathZoneDelete(self::PIN_HOST, '/lib15-old/');
         self::assertTrue($gone->bool('deleted'));
     }
 }

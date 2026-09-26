@@ -120,7 +120,12 @@ final class ClientOptionsTest extends TestCase
             [
             fn () => $this->c->denoiserQueryPin('utm_source', 'noisy'),
             fn () => $this->c->denoiserQueryPin(' ', 'noise'),
-            fn () => $this->c->denoiserPathPin('gone'),
+            fn () => $this->c->denoiserPathPin('gone', 'shop.example.com'),
+            // A pin on `*` or on no host is keyed by no request: refused.
+            fn () => $this->c->denoiserQueryPin('utm_source', 'noise'),
+            fn () => $this->c->denoiserQueryPin('utm_source', 'noise', '*'),
+            fn () => $this->c->denoiserPathPin('dead', ' '),
+            fn () => $this->c->denoiserPathPin('dead'),
             ] as $call
         ) {
             try {
@@ -138,8 +143,28 @@ final class ClientOptionsTest extends TestCase
         $this->t->answer('edge', 200, '{"pinned":true}');
         $this->c->denoiserQueryPin('utm_source', 'noise', 'shop.example.com', '/sale/');
         self::assertSame(['param' => 'utm_source', 'class' => 'noise', 'host' => 'shop.example.com', 'path_prefix' => '/sale/'], $this->sent()['body']);
-        $this->c->denoiserPathPin('dead', '*', '/old/');
-        self::assertSame(['status' => 'dead', 'host' => '*', 'path_prefix' => '/old/'], $this->sent()['body']);
+        $this->c->denoiserPathPin('dead', 'shop.example.com', '/old/');
+        self::assertSame(['status' => 'dead', 'host' => 'shop.example.com', 'path_prefix' => '/old/'], $this->sent()['body']);
+    }
+
+    public function testAPinHostIsSentTrimmedAndLowercased(): void
+    {
+        $this->t->answer('edge', 200, '{"pinned":true}');
+        $this->c->denoiserQueryPin('utm_source', 'noise', ' Shop.Example.COM ', '/');
+        self::assertSame('shop.example.com', $this->sent()['body']['host'], 'query scopes hash the host verbatim; path zones lowercase it');
+        $this->c->denoiserPathPin('dead', 'Shop.Example.COM', '/old/');
+        self::assertSame('shop.example.com', $this->sent()['body']['host']);
+    }
+
+    public function testUnpinAndDeleteStillTakeTheWildcardToCleanUp(): void
+    {
+        $this->t->answer('edge', 200, '{"unpinned":true}');
+        $this->c->denoiserQueryUnpin('utm_source', '*', '/');
+        self::assertSame('*', $this->sent()['body']['host']);
+        $this->c->denoiserPathUnpin('*', '/old/');
+        self::assertSame('*', $this->sent()['body']['host']);
+        $this->c->denoiserPathZoneDelete('*', '/old/');
+        self::assertSame('*', $this->sent()['body']['host']);
     }
 
     public function testZoneAndScopeDeletes(): void

@@ -48,16 +48,62 @@ final class TagSet
     /** @var array<int, array<string, true>> */
     private array $tags = [self::IDENTITY => [], self::REFERENCE => [], self::LISTED => []];
 
+    /** @var array<string, ?string> normalised tag => its family's overflow tag */
+    private array $familyOfTag = [];
+
     /**
      * @param string $prefix   Prepended to every tag (several sites on one Trident).
      * @param string $overflow Unprefixed name of the overflow tag.
+     */
+    /**
+     * @param array<string, string> $overflowFamilies regex (on the tag WITHOUT the prefix) => overflow tag.
+     *        A dropped tag matching a family adds that family's overflow tag
+     *        instead of the general one, so a purge adds an overflow tag only
+     *        for the kinds of tags it carries ({@see overflowTagsFor()}) — an
+     *        over-tagged listing is not refreshed by every unrelated purge.
      */
     public function __construct(
         private readonly string $prefix = '',
         private readonly string $overflow = 'list_overflow',
         private readonly int $maxTags = self::DEFAULT_MAX_TAGS,
-        private readonly int $maxBytes = self::DEFAULT_MAX_BYTES
+        private readonly int $maxBytes = self::DEFAULT_MAX_BYTES,
+        private readonly array $overflowFamilies = []
     ) {
+    }
+
+    /**
+     * The overflow tags a purge of $tags must also carry: the family tag of
+     * every family a tag belongs to, the general one for any other tag.
+     *
+     * @param iterable<string> $tags un-prefixed tags
+     * @param array<string, string> $overflowFamilies as in the constructor
+     * @return list<string> normalised, prefixed
+     */
+    public static function overflowTagsFor(iterable $tags, string $prefix, string $overflow, array $overflowFamilies = []): array
+    {
+        $out = [];
+        foreach ($tags as $tag) {
+            $tag = (string) $tag;
+            if ($tag === '') {
+                continue;
+            }
+            $family = self::familyOf($tag, $overflowFamilies);
+            $out[self::normalise($prefix, $family ?? $overflow)] = true;
+        }
+        return array_map('strval', array_keys($out));
+    }
+
+    /**
+     * @param array<string, string> $families
+     */
+    private static function familyOf(string $tag, array $families): ?string
+    {
+        foreach ($families as $pattern => $overflowTag) {
+            if (preg_match($pattern, $tag) === 1) {
+                return $overflowTag;
+            }
+        }
+        return null;
     }
 
     /**
@@ -76,9 +122,13 @@ final class TagSet
 
     public function add(string $tag, int $priority = self::IDENTITY): void
     {
+        $raw = $tag;
         $tag = self::normalise($this->prefix, $tag);
         if ($tag === '') {
             return;
+        }
+        if ($this->overflowFamilies !== []) {
+            $this->familyOfTag[$tag] = self::familyOf($raw, $this->overflowFamilies);
         }
         $priority = max(self::IDENTITY, min(self::LISTED, $priority));
         // A tag keeps its most important role.
@@ -115,32 +165,39 @@ final class TagSet
      */
     public function toArray(): array
     {
-        $overflow = self::normalise($this->prefix, $this->overflow);
+        $general = self::normalise($this->prefix, $this->overflow);
+        $familyTags = [];
+        foreach (array_unique(array_values($this->overflowFamilies)) as $f) {
+            $familyTags[self::normalise($this->prefix, $f)] = true;
+        }
+        // Slots and bytes stay reserved for every overflow tag that may be needed.
+        $reserved = array_merge([$general], array_map('strval', array_keys($familyTags)));
         $out = [];
         $bytes = 0;
-        $dropped = false;
-        // One slot and its bytes stay reserved for the overflow tag.
-        $slots = max(1, $this->maxTags - 1);
-        $budget = $this->maxBytes - strlen($overflow) - 1;
-        $wanted = false;
+        $needed = [];
+        $slots = max(1, $this->maxTags - count($reserved));
+        $budget = $this->maxBytes - array_sum(array_map(static fn (string $t): int => strlen($t) + 1, $reserved));
         foreach ($this->tags as $set) {
             foreach (array_keys($set) as $tag) {
                 $tag = (string) $tag;
-                if ($tag === $overflow) {
-                    $wanted = true;
+                if (in_array($tag, $reserved, true)) {
+                    $needed[$tag] = true;
                     continue;
                 }
                 $cost = strlen($tag) + ($out === [] ? 0 : 1);
                 if (count($out) >= $slots || $bytes + $cost > $budget) {
-                    $dropped = true;
+                    $family = $this->familyOfTag[$tag] ?? null;
+                    $needed[$family !== null ? self::normalise($this->prefix, $family) : $general] = true;
                     continue;
                 }
                 $out[] = $tag;
                 $bytes += $cost;
             }
         }
-        if ($dropped || $wanted) {
-            $out[] = $overflow;
+        foreach ($reserved as $tag) {
+            if (isset($needed[$tag])) {
+                $out[] = $tag;
+            }
         }
         return $out;
     }
