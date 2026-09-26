@@ -70,11 +70,43 @@ final class ApiTest extends TestCase
         self::assertSame('application/json', $t->requests[0]['headers']['Content-Type']);
     }
 
-    public function testANonJsonSuccessIsASuccess(): void
+    public function testNoContentIsASuccess(): void
     {
         $t = (new FakeTransport())->answer('edge-1', 204, '');
         $reply = $this->api($t)->call('POST', '/admin/warmer/cancel');
         self::assertSame(['success' => true, 'status_code' => 204], $reply['data']);
+    }
+
+    /**
+     * @return array<string, array{int, string}>
+     */
+    public static function notTheAdminApi(): array
+    {
+        return [
+            'redirect to https'       => [301, ''],
+            'temporary redirect'      => [302, '<html>Moved</html>'],
+            "a proxy's HTML page"     => [200, '<!doctype html><title>Welcome to nginx</title>'],
+            'empty 200'               => [200, ''],
+            'plain text 200'          => [200, 'OK'],
+        ];
+    }
+
+    /**
+     * The engine answers every admin call with JSON. Anything else used to
+     * decode to `success: true`, so a screen reported "Launch started" or a
+     * "reachable" empty dashboard when Trident never saw the request.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('notTheAdminApi')]
+    public function testAnythingButTheAdminApiIsAnError(int $status, string $body): void
+    {
+        $t = (new FakeTransport())->answer('edge-1', $status, $body);
+        try {
+            $this->api($t)->call('POST', '/admin/launch/start', [], []);
+            self::fail('expected ApiError');
+        } catch (ApiError $e) {
+            self::assertSame($status, $e->status());
+            self::assertFalse($e->isFeatureDisabled());
+        }
     }
 
     public function testAnErrorCarriesTheEngineCodeAndReadsAsDisabled(): void

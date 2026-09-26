@@ -228,6 +228,20 @@ list and entry responses read `size`, `content_type`, `vary`, and discovery
 reads `backend_name`/`addresses`. `purgeUrl()` splits an absolute URL into
 path, host and scheme.
 
+## 1.4.1 — fixes
+
+- **Anything that is not the admin API is an error.** Every engine admin
+  endpoint answers JSON. `Admin\Api::call()` used to turn a redirect (an
+  `http://` API URL in front of an https-only listener, a wrong path) or a
+  proxy's HTML page into `success: true`, so a screen could report "Launch
+  started" or an empty "reachable" dashboard when Trident never saw the request.
+  A 3xx, or a 2xx whose body is not JSON, now throws `ApiError`; `204 No
+  Content` is still a success. Durable purge delivery (`Delivery\PurgeClient`,
+  judged by `Acknowledgement`) is unchanged.
+- **`purgeTagPattern()` sends `pattern_type`**, the field the engine reads. It
+  sent `type`, which the engine ignored, so a regex tag pattern was purged as a
+  wildcard.
+
 ## PSR-15 Middleware
 
 ### Cache Tag Middleware

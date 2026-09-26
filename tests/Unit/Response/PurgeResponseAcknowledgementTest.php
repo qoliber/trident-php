@@ -64,9 +64,15 @@ final class PurgeResponseAcknowledgementTest extends TestCase
         self::assertSame('refused', $r->state);
     }
 
+    /**
+     * An empty 200 is not the admin API (every engine answer is JSON): it is an
+     * error, like a 5xx — never a purge. (Durable delivery goes through
+     * Delivery\PurgeClient and Acknowledgement, which judge it the same way.)
+     */
     public function testEmptyBodyIsNotAPurge(): void
     {
-        self::assertFalse(self::client(200, '')->purgeTags(['a'])->isAcknowledged());
+        $this->expectException(\Qoliber\Trident\Admin\ApiError::class);
+        self::client(200, '')->purgeTags(['a']);
     }
 
     public function testCacheClearUsesTheClearSchema(): void

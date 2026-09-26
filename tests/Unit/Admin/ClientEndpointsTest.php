@@ -44,6 +44,19 @@ final class ClientEndpointsTest extends TestCase
         return ['method' => $r['method'], 'url' => $r['url'], 'body' => $r['body'] === null ? null : json_decode($r['body'], true)];
     }
 
+    /**
+     * The engine reads `pattern_type`. The client sent `type`, which the engine
+     * ignored, so a regex tag pattern was purged as a wildcard.
+     */
+    public function testATagPatternNamesItsTypeTheWayTheEngineReadsIt(): void
+    {
+        $this->t->answer('edge', 200, '{"purged":0,"mode":"hard"}');
+        $this->c->purgeTagPattern('^cat_\\d+$', 'regex');
+        $sent = $this->sent();
+        self::assertSame('http://edge:9301/admin/purge/tag/pattern', $sent['url']);
+        self::assertSame(['pattern' => '^cat_\\d+$', 'pattern_type' => 'regex'], $sent['body']);
+    }
+
     public function testForInstanceKeepsTheInstanceName(): void
     {
         self::assertSame('edge', $this->c->instance()->name);

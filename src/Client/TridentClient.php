@@ -386,7 +386,9 @@ class TridentClient implements TridentClientInterface
     {
         $body = [
             'pattern' => $pattern,
-            'type' => $patternType,
+            // The engine's field is `pattern_type`; an unknown `type` was
+            // ignored, so every regex was purged as a wildcard.
+            'pattern_type' => $patternType,
         ];
 
         $response = $this->request('POST', '/admin/purge/tag/pattern', $body);

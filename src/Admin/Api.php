@@ -78,13 +78,19 @@ final class Api
     /**
      * Call an endpoint and return its decoded JSON body.
      *
-     * An empty or non-JSON 2xx body decodes to `['success' => true,
-     * 'status_code' => N]` — several engine endpoints answer that way.
+     * Every admin endpoint of the engine answers JSON, so anything else is not
+     * the admin API: a redirect (an `http://` URL in front of an https-only
+     * listener, a wrong path), or a proxy's own HTML page. Those are errors —
+     * reported as success, a screen would show "Launch started" or an empty
+     * "reachable" dashboard when Trident never saw the request. Only `204 No
+     * Content` has no body to decode; it decodes to `['success' => true,
+     * 'status_code' => 204]`.
      *
      * @param array<string, scalar|null> $query
      * @param array<string, mixed>|null  $body
      * @return array{status: int, data: array<string, mixed>}
-     * @throws ApiError No response, or HTTP status >= 400.
+     * @throws ApiError No response, a redirect, HTTP status >= 400, or a body
+     *                  that is not JSON.
      */
     public function call(string $method, string $path, array $query = [], ?array $body = null): array
     {
@@ -118,9 +124,21 @@ final class Api
         if ($response['status'] >= 400) {
             throw ApiError::fromResponse($response['status'], $response['body']);
         }
+        if ($response['status'] >= 300) {
+            throw new ApiError(sprintf(
+                'Trident answered HTTP %d (a redirect), not the admin API: check the API URL\'s scheme, host and port',
+                $response['status']
+            ), $response['status']);
+        }
+        if ($response['status'] === 204) {
+            return ['status' => 204, 'data' => ['success' => true, 'status_code' => 204]];
+        }
         $data = json_decode($response['body'], true);
         if (!is_array($data)) {
-            $data = ['success' => true, 'status_code' => $response['status']];
+            throw new ApiError(sprintf(
+                'HTTP %d with a body that is not JSON: this is not the Trident admin API (a proxy or another server answered)',
+                $response['status']
+            ), $response['status']);
         }
         return ['status' => $response['status'], 'data' => $data];
     }
