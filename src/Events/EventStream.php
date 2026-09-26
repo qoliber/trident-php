@@ -146,7 +146,7 @@ class EventStream
                 $message = substr($buffer, 0, $pos);
                 $buffer = substr($buffer, $pos + 2);
 
-                $event = $this->parseEvent($message);
+                $event = self::parseEvent($message);
                 if ($event !== null) {
                     yield $event;
                 }
@@ -154,7 +154,31 @@ class EventStream
         }
     }
 
-    private function parseEvent(string $message): ?TridentEvent
+    /**
+     * Every complete event in a buffered burst of an SSE stream — for a
+     * caller that reads the stream for a bounded time and parses what
+     * arrived (a PHP admin page cannot hold the stream open). A trailing
+     * partial event is dropped; `connected` handshakes and keepalives are
+     * events like any other, filter them by type.
+     *
+     * @return list<TridentEvent>
+     */
+    public static function parseChunk(string $chunk): array
+    {
+        $events = [];
+        $chunk = str_replace(["\r\n", "\r"], "\n", $chunk);
+        $messages = explode("\n\n", $chunk);
+        array_pop($messages); // not terminated by a blank line: incomplete
+        foreach ($messages as $message) {
+            $event = self::parseEvent($message);
+            if ($event !== null) {
+                $events[] = $event;
+            }
+        }
+        return $events;
+    }
+
+    private static function parseEvent(string $message): ?TridentEvent
     {
         $eventType = 'message';
         $data = '';

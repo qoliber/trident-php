@@ -32,8 +32,8 @@ class DiscoveryRefreshResponse
     {
         return new self(
             success: (bool) ($data['success'] ?? true),
-            name: (string) ($data['name'] ?? ''),
-            ips: (array) ($data['ips'] ?? $data['resolved_ips'] ?? []),
+            name: (string) ($data['name'] ?? $data['backend_name'] ?? ''),
+            ips: (array) ($data['ips'] ?? $data['resolved_ips'] ?? $data['addresses'] ?? []),
             message: isset($data['message']) ? (string) $data['message'] : null,
             error: isset($data['error']) ? (string) $data['error'] : null
         );

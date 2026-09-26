@@ -655,7 +655,7 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testMemoryStats(): void
     {
-        Mock::get('/admin/stats/memory')
+        Mock::get('/admin/memory')
             ->respondJson([
                 'total_bytes' => 536870912,
                 'cache_body_bytes' => 400000000,
@@ -714,7 +714,7 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testSnapshot(): void
     {
-        Mock::post('/admin/cache/snapshot')
+        Mock::post('/admin/snapshot')
             ->respondJson([
                 'success' => true,
                 'path' => '/var/cache/trident/snapshot_20240115.dat',
@@ -761,7 +761,8 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testDiscoveryDetail(): void
     {
-        Mock::get('/admin/discovery/api-backend')
+        Mock::get('/admin/discovery/detail')
+            ->withQueryParam('name', 'api-backend')
             ->respondJson([
                 'name' => 'api-backend',
                 'hostname' => 'api.example.com',
@@ -785,7 +786,8 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testDiscoveryRefresh(): void
     {
-        Mock::post('/admin/discovery/api-backend/refresh')
+        Mock::post('/admin/discovery/refresh')
+            ->withQueryParam('name', 'api-backend')
             ->respondJson([
                 'success' => true,
                 'name' => 'api-backend',
@@ -827,7 +829,7 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testLaunchStatus(): void
     {
-        Mock::get('/admin/launch/status/launch-abc123')
+        Mock::get('/admin/launch/status')
             ->respondJson([
                 'launch_id' => 'launch-abc123',
                 'status' => 'warming',
@@ -850,7 +852,7 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testLaunchComplete(): void
     {
-        Mock::post('/admin/launch/complete/launch-abc123')
+        Mock::post('/admin/launch/complete')
             ->respondJson([
                 'success' => true,
                 'launch_id' => 'launch-abc123',
@@ -865,7 +867,7 @@ class ServerMockIntegrationTest extends TestCase
 
     public function testLaunchAbort(): void
     {
-        Mock::post('/admin/launch/abort/launch-abc123')
+        Mock::post('/admin/launch/abort')
             ->respondJson([
                 'success' => true,
                 'launch_id' => 'launch-abc123',

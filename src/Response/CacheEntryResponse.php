@@ -25,7 +25,12 @@ class CacheEntryResponse
         public readonly array $tags = [],
         public readonly ?int $hits = null,
         public readonly ?int $statusCode = null,
-        public readonly ?int $contentLength = null
+        public readonly ?int $contentLength = null,
+        public readonly ?string $contentType = null,
+        /** @var list<string> */
+        public readonly array $vary = [],
+        public readonly ?int $graceRemaining = null,
+        public readonly ?bool $compressed = null
     ) {
     }
 
@@ -43,7 +48,11 @@ class CacheEntryResponse
             tags: $data['tags'] ?? [],
             hits: isset($data['hits']) ? (int) $data['hits'] : null,
             statusCode: isset($data['status_code']) ? (int) $data['status_code'] : null,
-            contentLength: isset($data['content_length']) ? (int) $data['content_length'] : null
+            contentLength: isset($data['content_length']) ? (int) $data['content_length'] : null,
+            contentType: isset($data['content_type']) && is_string($data['content_type']) ? $data['content_type'] : null,
+            vary: array_values(array_filter((array) ($data['vary'] ?? []), 'is_string')),
+            graceRemaining: isset($data['grace_remaining']) ? (int) $data['grace_remaining'] : null,
+            compressed: isset($data['compressed']) ? (bool) $data['compressed'] : null
         );
     }
 

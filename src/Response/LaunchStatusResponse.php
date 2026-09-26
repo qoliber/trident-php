@@ -34,7 +34,7 @@ class LaunchStatusResponse
     {
         return new self(
             launchId: $data['launch_id'] ?? '',
-            status: $data['status'] ?? 'unknown',
+            status: $data['status'] ?? $data['state'] ?? 'unknown',
             progress: $data['progress'] ?? null,
             currentUrl: $data['current_url'] ?? null,
             maintenanceActive: $data['maintenance_active'] ?? false,

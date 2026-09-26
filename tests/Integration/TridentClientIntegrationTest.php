@@ -53,11 +53,12 @@ class TridentClientIntegrationTest extends TestCase
         $response = $this->trident->stats();
 
         $this->assertGreaterThanOrEqual(0, $response->entries);
-        $this->assertGreaterThanOrEqual(0, $response->bytes);
+        $this->assertGreaterThanOrEqual(0, $response->memoryUsed);
         $this->assertGreaterThanOrEqual(0, $response->hits);
         $this->assertGreaterThanOrEqual(0, $response->misses);
-        $this->assertGreaterThanOrEqual(0.0, $response->hitRatio);
-        $this->assertLessThanOrEqual(1.0, $response->hitRatio);
+        // The engine reports hit_ratio as a percentage (0-100).
+        $this->assertGreaterThanOrEqual(0.0, $response->getHitRatioPercent());
+        $this->assertLessThanOrEqual(100.0, $response->getHitRatioPercent());
     }
 
     public function testPurgeByTag(): void

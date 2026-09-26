@@ -106,7 +106,8 @@ class CacheEntryItem
         public readonly array $tags,
         public readonly int $hits,
         public readonly int $statusCode,
-        public readonly int $contentLength
+        public readonly int $contentLength,
+        public readonly ?string $contentType = null
     ) {
     }
 
@@ -124,7 +125,8 @@ class CacheEntryItem
             tags: (array) ($data['tags'] ?? []),
             hits: (int) ($data['hits'] ?? 0),
             statusCode: (int) ($data['status_code'] ?? 200),
-            contentLength: (int) ($data['content_length'] ?? 0)
+            contentLength: (int) ($data['content_length'] ?? $data['size'] ?? 0),
+            contentType: isset($data['content_type']) && is_string($data['content_type']) ? $data['content_type'] : null
         );
     }
 

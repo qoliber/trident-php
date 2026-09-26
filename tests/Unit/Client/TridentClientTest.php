@@ -447,10 +447,12 @@ class TridentClientTest extends TestCase
             ->with('GET', 'http://localhost:9100/admin/health')
             ->willReturn($this->request);
 
-        // When no API key, withHeader should only be called for Content-Type (not Authorization)
-        $this->request->expects($this->never())
-            ->method('withHeader')
-            ->with('Authorization', $this->anything());
+        // No API key: no Authorization header (Accept is always sent).
+        $this->request->method('withHeader')
+            ->willReturnCallback(function (string $name) {
+                $this->assertNotSame('Authorization', $name, 'no token configured, so no Authorization header');
+                return $this->request;
+            });
 
         $this->httpClient->expects($this->once())
             ->method('sendRequest')
@@ -487,6 +489,7 @@ class TridentClientTest extends TestCase
             ->method('createRequest')
             ->with('GET', 'http://localhost:9100/admin/health')
             ->willReturn($this->request);
+        $this->request->method('withHeader')->willReturnSelf();
 
         $this->httpClient->expects($this->once())
             ->method('sendRequest')
@@ -651,7 +654,7 @@ class TridentClientTest extends TestCase
 
     public function testLaunchStatus(): void
     {
-        $this->setupSuccessfulRequest('GET', 'http://localhost:9100/admin/launch/status/launch-123', [
+        $this->setupSuccessfulRequest('GET', 'http://localhost:9100/admin/launch/status', [
             'launch_id' => 'launch-123',
             'status' => 'warming',
             'progress' => [
@@ -678,7 +681,7 @@ class TridentClientTest extends TestCase
 
     public function testLaunchComplete(): void
     {
-        $this->setupPostRequestWithoutBody('http://localhost:9100/admin/launch/complete/launch-123', [
+        $this->setupPostRequestWithoutBody('http://localhost:9100/admin/launch/complete', [
             'launch_id' => 'launch-123',
             'status' => 'completed',
             'message' => 'Launch completed successfully',
@@ -692,7 +695,7 @@ class TridentClientTest extends TestCase
 
     public function testLaunchAbort(): void
     {
-        $this->setupPostRequest('http://localhost:9100/admin/launch/abort/launch-123', [
+        $this->setupPostRequest('http://localhost:9100/admin/launch/abort', [
             'launch_id' => 'launch-123',
             'status' => 'aborted',
             'reason' => 'User requested abort',
@@ -709,12 +712,18 @@ class TridentClientTest extends TestCase
     {
         $this->requestFactory->expects($this->once())
             ->method('createRequest')
-            ->with('POST', 'http://localhost:9100/admin/launch/abort/launch-456')
+            ->with('POST', 'http://localhost:9100/admin/launch/abort')
             ->willReturn($this->request);
 
         $this->request->expects($this->atLeastOnce())
             ->method('withHeader')
             ->willReturnSelf();
+        // No reason: an empty JSON OBJECT, which the engine accepts ("[]" it would not).
+        $this->streamFactory->expects($this->once())
+            ->method('createStream')
+            ->with('{}')
+            ->willReturn($this->stream);
+        $this->request->method('withBody')->willReturnSelf();
 
         $this->httpClient->expects($this->once())
             ->method('sendRequest')

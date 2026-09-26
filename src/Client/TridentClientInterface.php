@@ -22,6 +22,7 @@ use Qoliber\Trident\Response\CacheStatsResponse;
 use Qoliber\Trident\Response\CacheTagsResponse;
 use Qoliber\Trident\Response\ConfigResponse;
 use Qoliber\Trident\Response\ConnectionsResponse;
+use Qoliber\Trident\Admin\Payload;
 use Qoliber\Trident\Events\EventStream;
 use Qoliber\Trident\Response\DiscoveryDetailResponse;
 use Qoliber\Trident\Response\DiscoveryListResponse;
@@ -236,17 +237,17 @@ interface TridentClientInterface
     /**
      * Get launch status
      */
-    public function launchStatus(string $launchId): LaunchStatusResponse;
+    public function launchStatus(?string $launchId = null): LaunchStatusResponse;
 
     /**
      * Complete launch (go live)
      */
-    public function launchComplete(string $launchId): LaunchResponse;
+    public function launchComplete(?string $launchId = null): LaunchResponse;
 
     /**
      * Abort launch
      */
-    public function launchAbort(string $launchId, ?string $reason = null): LaunchResponse;
+    public function launchAbort(?string $launchId = null, ?string $reason = null): LaunchResponse;
 
     // ========================================
     // Cache Browsing
@@ -255,12 +256,12 @@ interface TridentClientInterface
     /**
      * List cache entries with pagination
      */
-    public function cacheEntries(int $limit = 100, int $offset = 0, ?string $filter = null): CacheEntriesResponse;
+    public function cacheEntries(int $limit = 100, int $offset = 0, ?string $filter = null, ?string $sort = null, ?string $tag = null): CacheEntriesResponse;
 
     /**
      * List cache tags with pagination
      */
-    public function cacheTags(int $limit = 100, int $offset = 0, ?string $filter = null): CacheTagsResponse;
+    public function cacheTags(int $limit = 100, int $offset = 0, ?string $filter = null, ?string $sort = null, ?string $prefix = null): CacheTagsResponse;
 
     /**
      * Preview purge operation (dry-run)
@@ -322,4 +323,60 @@ interface TridentClientInterface
      * Get an event stream for real-time SSE events
      */
     public function events(): EventStream;
+
+    // Operator screens
+
+    public function status(): Payload;
+
+    public function purgeHost(string $host, bool $soft = false): PurgeResponse;
+
+    public function purgeVary(string $header, string $value, bool $soft = false): PurgeResponse;
+
+    /**
+     * @param list<string> $paths
+     */
+    public function coverage(array $paths, ?string $host = null, ?string $scheme = null): Payload;
+
+    public function cacheVariants(string $url): Payload;
+
+    public function explain(string $url, string $method = 'GET', bool $detail = false): Payload;
+
+    public function warmerStatus(): Payload;
+
+    public function warmerRun(): Payload;
+
+    public function warmerCancel(): Payload;
+
+    /**
+     * @param list<string> $urls
+     */
+    public function warmerQueue(array $urls): Payload;
+
+    public function launch(): Payload;
+
+    public function reflectStatus(): Payload;
+
+    public function reflectEnable(?string $level = null, ?string $duration = null, ?string $reason = null): Payload;
+
+    public function reflectDisable(?string $mode = null): Payload;
+
+    public function reflectQueue(): Payload;
+
+    public function denoiserReport(): Payload;
+
+    public function denoiserPathZones(): Payload;
+
+    public function denoiserQueryScopes(): Payload;
+
+    public function denoiserQueryPin(string $param, string $class, string $host = '*', string $pathPrefix = '/'): Payload;
+
+    public function denoiserQueryUnpin(string $param, string $host = '*', string $pathPrefix = '/'): Payload;
+
+    public function denoiserPathPin(string $zoneStatus, string $host = '*', string $pathPrefix = '/'): Payload;
+
+    public function denoiserPathUnpin(string $host = '*', string $pathPrefix = '/'): Payload;
+
+    public function denoiserReset(string $which): Payload;
+
+    public function esiFragments(): Payload;
 }

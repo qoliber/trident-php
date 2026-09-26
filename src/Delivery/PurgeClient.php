@@ -98,11 +98,7 @@ final class PurgeClient
      */
     private function headers(): array
     {
-        return [
-            'Authorization' => 'Bearer ' . $this->instance->apiToken,
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ];
+        return \Qoliber\Trident\Admin\Api::headers($this->instance);
     }
 
     private static function noResponse(?string $error): string

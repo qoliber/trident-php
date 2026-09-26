@@ -34,12 +34,17 @@ class LaunchResponse
         $status = $data['status'] ?? null;
 
         return new self(
-            success: isset($data['launch_id']) || in_array($status, ['warming', 'ready', 'completed', 'aborted'], true),
+            // The engine says so directly (`success`); older shapes only implied it.
+            success: isset($data['success'])
+                ? (bool) $data['success']
+                : (isset($data['launch_id']) || in_array($status, ['warming', 'ready', 'completed', 'aborted'], true)),
             launchId: $data['launch_id'] ?? null,
             status: $status,
             startedAt: $data['started_at'] ?? null,
-            urlsTotal: isset($data['urls_total']) ? (int) $data['urls_total'] : null,
-            urlsCompleted: isset($data['urls_completed']) ? (int) $data['urls_completed'] : null,
+            urlsTotal: isset($data['urls_total']) ? (int) $data['urls_total']
+                : (isset($data['total_urls']) ? (int) $data['total_urls'] : null),
+            urlsCompleted: isset($data['urls_completed']) ? (int) $data['urls_completed']
+                : (isset($data['urls_warmed']) ? (int) $data['urls_warmed'] : null),
             maintenanceActive: $data['maintenance_active'] ?? null,
             message: $data['message'] ?? null,
             reason: $data['reason'] ?? null

@@ -27,7 +27,11 @@ class CacheStatsResponse
         public readonly int $compressionBytesSaved,
         public readonly int $tagIndexMemoryBytes,
         public readonly int $uniqueTags,
-        public readonly int $indexedKeys
+        public readonly int $indexedKeys,
+        public readonly int $hits = 0,
+        public readonly int $misses = 0,
+        public readonly int $passes = 0,
+        public readonly ?float $hitRatio = null
     ) {
     }
 
@@ -50,7 +54,11 @@ class CacheStatsResponse
             compressionBytesSaved: (int) ($data['compression_bytes_saved'] ?? 0),
             tagIndexMemoryBytes: (int) ($data['tag_index_memory_bytes'] ?? 0),
             uniqueTags: (int) ($data['unique_tags'] ?? 0),
-            indexedKeys: (int) ($data['indexed_keys'] ?? 0)
+            indexedKeys: (int) ($data['indexed_keys'] ?? $data['url_indexed_keys'] ?? 0),
+            hits: (int) ($data['hits'] ?? 0),
+            misses: (int) ($data['misses'] ?? 0),
+            passes: (int) ($data['passes'] ?? 0),
+            hitRatio: isset($data['hit_ratio']) && is_numeric($data['hit_ratio']) ? (float) $data['hit_ratio'] : null
         );
     }
 
@@ -124,10 +132,17 @@ class CacheStatsResponse
         return $this->indexedKeys;
     }
 
+    /**
+     * Hits as a percentage of hits + misses, as the engine reports it
+     * (`hit_ratio`, 0–100); computed from the counters when absent.
+     */
     public function getHitRatioPercent(): float
     {
-        // Calculated from hits/misses if available - for now return 0
-        return 0.0;
+        if ($this->hitRatio !== null) {
+            return $this->hitRatio;
+        }
+        $lookups = $this->hits + $this->misses;
+        return $lookups > 0 ? $this->hits * 100.0 / $lookups : 0.0;
     }
 
     public function getBytesFormatted(): string

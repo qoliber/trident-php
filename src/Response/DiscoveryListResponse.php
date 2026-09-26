@@ -34,7 +34,7 @@ class DiscoveryListResponse
 
         return new self(
             backends: $backends,
-            total: (int) ($data['total'] ?? count($backends))
+            total: (int) ($data['total'] ?? $data['count'] ?? count($backends))
         );
     }
 
@@ -89,9 +89,9 @@ class DiscoveryBackend
     public static function fromArray(array $data): self
     {
         return new self(
-            name: (string) ($data['name'] ?? ''),
+            name: (string) ($data['name'] ?? $data['backend_name'] ?? ''),
             hostname: (string) ($data['hostname'] ?? $data['host'] ?? ''),
-            resolvedIps: (array) ($data['resolved_ips'] ?? $data['ips'] ?? []),
+            resolvedIps: (array) ($data['resolved_ips'] ?? $data['ips'] ?? $data['addresses'] ?? []),
             healthyCount: (int) ($data['healthy_count'] ?? $data['healthy'] ?? 0),
             unhealthyCount: (int) ($data['unhealthy_count'] ?? $data['unhealthy'] ?? 0),
             lastResolved: isset($data['last_resolved']) ? (string) $data['last_resolved'] : null

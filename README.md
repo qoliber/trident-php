@@ -179,6 +179,55 @@ purge: `PurgeResponse::isAcknowledged()`, `->state`, `->failure`. The old
 `isSuccess()` is unchanged (true for any purge body) and must not be used to
 decide that a purge happened.
 
+## Admin screens for platform modules (1.4.0)
+
+Everything a platform's admin needs to show and drive Trident — the screen set
+of the Magento module (dashboard, purge, cached pages, tags, coverage, warmer,
+launch, reflect, denoisers, bans, backends, discovery, live events) — with no
+per-platform API code.
+
+| class | what |
+|---|---|
+| `Qoliber\Trident\Admin\Api` | the ONE request path to an instance's admin API: bearer token (only when set), JSON in and out, an empty body sent as `{}` (the engine rejects `[]`), errors mapped to `ApiError`, and one bounded retry when the admin rate limiter answers 429 with `retry_after_ms` (capped at 1 s). `TridentClient` and `PurgeClient` both use it |
+| `Qoliber\Trident\Admin\ApiError` | status (0 = no response), the engine's error `code` (`REFLECT_DISABLED`, `LAUNCH_ACTIVE`, …), `isUnreachable()`, `isFeatureDisabled()` (a 404 `*_DISABLED` or a 503 "… not enabled": show it as information, not a failure), `reason()` (never the token) |
+| `Qoliber\Trident\Admin\Fleet` | every configured instance (`Instances::parse()`): `each()` / `on($names)` run a call per instance and return one `InstanceResult` each — a dead instance is reported in its result, never thrown, so a screen still shows the live ones |
+| `Qoliber\Trident\Admin\Payload` | a never-throwing, dotted-path view of wide or growing responses (warmer, reflect, denoisers, coverage, explain, variants) |
+| `Qoliber\Trident\Admin\SiteUrl` | a storefront URL split the way the engine keys entries (path + host + scheme): the engine does not parse an absolute URL in `url`, and defaults the scheme to https |
+
+```php
+use Qoliber\Trident\Admin\Fleet;
+use Qoliber\Trident\Client\TridentClient;
+
+$fleet = new Fleet($instances, $transport);          // the same instances and transport the purges use
+foreach ($fleet->each(fn (TridentClient $c) => $c->stats()) as $result) {
+    echo $result->isOk()
+        ? sprintf("%s: %.1f%% hits\n", $result->name(), $result->value->getHitRatioPercent())
+        : sprintf("%s: %s\n", $result->name(), $result->reason());
+}
+$fleet->on(['edge-1'], fn (TridentClient $c) => $c->purgeUrl('https://shop.example/p/beanie/'));
+```
+
+`TridentClient::forInstance($instance, $transport)` builds a client over any
+`Transport` (the WordPress HTTP API, Magento's Curl); new operator calls:
+`status()`, `purgeHost()`, `purgeVary()`, `coverage()`, `cacheVariants()`,
+`explain()`, `warmerStatus|Run|Cancel|Queue()`, `launch()`,
+`reflectStatus|Enable|Disable|Queue()`, `denoiserReport()`,
+`denoiserPathZones()`, `denoiserQueryScopes()`, `denoiserQuery|PathPin()`,
+`…Unpin()`, `denoiserReset()`, `esiFragments()`, and
+`EventStream::parseChunk()` for a bounded read of an SSE stream.
+
+Corrected against the engine in the same release (each was checked on a live
+1.8.0 Trident): the launch calls no longer append a launch id the engine does
+not have; `memoryStats()` reads `GET /admin/memory`; `snapshot()` and the
+discovery calls use the engine's paths; `purgePreview()` sends
+`url_pattern`/`tag`/`tags`/`tag_pattern` and reads `would_free_bytes` and the
+`sample`; `cacheEntries()`/`cacheTags()` gained the engine's `sort`/`tag`/`prefix`
+filters; `CacheStatsResponse` now carries hits, misses, passes and the hit
+ratio (it always reported 0 %); `LaunchResponse` reads the engine's `success`;
+list and entry responses read `size`, `content_type`, `vary`, and discovery
+reads `backend_name`/`addresses`. `purgeUrl()` splits an absolute URL into
+path, host and scheme.
+
 ## PSR-15 Middleware
 
 ### Cache Tag Middleware

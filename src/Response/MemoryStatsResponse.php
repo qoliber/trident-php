@@ -21,15 +21,50 @@ class MemoryStatsResponse
         public readonly int $bufferBytes,
         public readonly int $compressionSavedBytes,
         public readonly float $usagePercent,
-        public readonly int $maxMemory
+        public readonly int $maxMemory,
+        public readonly int $rssBytes = 0,
+        public readonly int $trackedBytes = 0
     ) {
     }
 
     /**
+     * Reads the engine's `GET /admin/memory` snapshot (`snapshot.categories`
+     * with a `resident`/`transient` band per category, and the allocator's
+     * RSS), and the older flat shape.
+     *
      * @param array<string, mixed> $data
      */
     public static function fromArray(array $data): self
     {
+        $snapshot = $data['snapshot'] ?? null;
+        if (is_array($snapshot) && isset($snapshot['categories']) && is_array($snapshot['categories'])) {
+            $bytes = [];
+            $transient = 0;
+            foreach ($snapshot['categories'] as $row) {
+                if (!is_array($row) || !isset($row['category'])) {
+                    continue;
+                }
+                $logical = (int) ($row['logical_bytes'] ?? 0);
+                $bytes[(string) $row['category']] = $logical;
+                if (($row['band'] ?? '') === 'transient') {
+                    $transient += $logical;
+                }
+            }
+            $rss = (int) ($snapshot['allocator']['rss_bytes'] ?? 0);
+            return new self(
+                totalBytes: $rss,
+                cacheBodyBytes: $bytes['cache_entry_bodies'] ?? 0,
+                cacheMetadataBytes: ($bytes['cache_entry_headers'] ?? 0) + ($bytes['cache_entry_keys'] ?? 0)
+                    + ($bytes['cache_entry_struct'] ?? 0) + ($bytes['url_index'] ?? 0),
+                tagIndexBytes: $bytes['tag_index'] ?? 0,
+                bufferBytes: $transient,
+                compressionSavedBytes: 0,
+                usagePercent: 0.0,
+                maxMemory: 0,
+                rssBytes: $rss,
+                trackedBytes: (int) ($snapshot['tracked_logical_bytes'] ?? 0)
+            );
+        }
         return new self(
             totalBytes: (int) ($data['total_bytes'] ?? $data['total'] ?? 0),
             cacheBodyBytes: (int) ($data['cache_body_bytes'] ?? $data['bodies'] ?? 0),
