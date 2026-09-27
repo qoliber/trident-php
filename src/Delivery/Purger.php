@@ -94,6 +94,11 @@ final class Purger
      *                                               commit callback; Symfony: `kernel.terminate`).
      * @param (callable(): int)|null          $clock Unix time; `time()` by default.
      * @param int                             $grace Seconds other drainers leave a new row alone.
+     * @param int                             $redeliverAfter 1.7.0: seconds after which a purge this process
+     *                                               delivered is delivered once more (0 = never). Closes the
+     *                                               editor race: a page render that read the OLD data before
+     *                                               the save committed and finished after the purge re-stores
+     *                                               the stale page; the second purge removes it.
      */
     public function __construct(
         private readonly OutboxStore $store,
@@ -102,7 +107,8 @@ final class Purger
         private readonly string $mode,
         callable $defer,
         ?callable $clock = null,
-        private readonly int $grace = self::DEFAULT_GRACE
+        private readonly int $grace = self::DEFAULT_GRACE,
+        private readonly int $redeliverAfter = 0
     ) {
         $this->clientFactory = \Closure::fromCallable($clientFactory);
         $this->defer = \Closure::fromCallable($defer);
@@ -183,7 +189,40 @@ final class Purger
         if ($ids === []) {
             return new DrainReport();
         }
-        return $this->drainer()->deliverEntries($this->store->byIds($ids), ($this->clock)());
+        $entries = $this->store->byIds($ids);
+        $now = ($this->clock)();
+        $report = $this->drainer()->deliverEntries($entries, $now);
+        self::scheduleRedelivery($this->store, $entries, $now, $this->redeliverAfter);
+
+        return $report;
+    }
+
+    /**
+     * Record the purges of `$entries` once more, due in `$after` seconds — the
+     * second delivery of a purge (see `$redeliverAfter`). It is an ordinary
+     * row: any drain delivers it and it is not re-scheduled again. A write
+     * failure is ignored: the first delivery happened, the second is a
+     * safety net.
+     *
+     * @param list<OutboxEntry> $entries
+     * @return int rows recorded
+     */
+    public static function scheduleRedelivery(OutboxStore $store, array $entries, int $now, int $after): int
+    {
+        if ($after <= 0) {
+            return 0;
+        }
+        $rows = 0;
+        foreach ($entries as $entry) {
+            try {
+                $rows += $store instanceof ScheduledStore
+                    ? $store->recordScheduled($entry->instance, $entry->tags, $now, $now + $after)
+                    : (int) (bool) $store->record($entry->instance, $entry->tags, $now, $now + $after);
+            } catch (\Throwable) {
+            }
+        }
+
+        return $rows;
     }
 
     /**

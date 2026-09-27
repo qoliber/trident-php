@@ -328,4 +328,64 @@ final class PurgerTest extends TestCase
         $this->http->answer('edge1', 401, '{"error":"Unauthorized"}');
         self::assertSame(['ok' => false, 'message' => 'HTTP 401 — token rejected'], $client->status());
     }
+
+    /**
+     * The editor race: a render that read the old data before the save
+     * committed and finished after the purge re-stores the stale page. The
+     * purge is delivered once more after $redeliverAfter; that second row is
+     * ordinary (any drain delivers it) and is not re-scheduled again.
+     */
+    public function testAPurgeIsDeliveredOnceMoreAfterTheRedeliveryDelay(): void
+    {
+        $purger = new Purger(
+            $this->store,
+            self::one(),
+            fn (Instance $i): PurgeClient => new PurgeClient($i, $this->http),
+            'soft',
+            function (callable $cb): void {
+                $this->deferred[] = $cb;
+            },
+            fn (): int => $this->now,
+            Purger::DEFAULT_GRACE,
+            10
+        );
+        $purger->purgeTags(['p_1']);
+        $this->endRequest();
+        self::assertCount(1, $this->http->purgedTags('edge1'), 'first delivery at the end of the request');
+        self::assertCount(1, $this->store->rows, 'a second delivery is scheduled');
+        $row = array_values($this->store->rows)[0];
+        self::assertSame(['p_1'], $row['tags']);
+
+        self::assertSame(0, $purger->drain()->delivered, 'not due before the delay');
+        $this->now += 10;
+        self::assertSame(1, $purger->drain()->delivered, 'due after the delay');
+        self::assertSame([['p_1'], ['p_1']], $this->http->purgedTags('edge1'));
+        self::assertSame([], $this->store->rows, 'the second delivery is not re-scheduled');
+    }
+
+    public function testNoRedeliveryByDefault(): void
+    {
+        $purger = $this->purger(self::one());
+        $purger->purgeTags(['p_1']);
+        $this->endRequest();
+        self::assertSame([], $this->store->rows);
+    }
+
+    public function testARedeliveryIsAScheduledRowWhenTheStoreCanHoldOne(): void
+    {
+        $store = new class extends \Qoliber\Trident\Testing\InMemoryOutboxStore implements \Qoliber\Trident\Delivery\ScheduledStore {
+            /** @var list<array{string, list<string>}> */
+            public array $scheduled = [];
+
+            public function recordScheduled(string $instance, array $tags, int $now, int $dueAt): int
+            {
+                $this->scheduled[] = [$instance, $tags];
+
+                return $this->record($instance, $tags, $now, $dueAt) > 0 ? 1 : 0;
+            }
+        };
+        $entries = [new \Qoliber\Trident\Delivery\OutboxEntry(1, 'edge-1', ['p_1'], 0)];
+        self::assertSame(1, Purger::scheduleRedelivery($store, $entries, 100, 10));
+        self::assertSame([['edge-1', ['p_1']]], $store->scheduled);
+    }
 }

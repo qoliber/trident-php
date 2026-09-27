@@ -310,7 +310,61 @@ every class that implements it. Type against `TridentClient` to use them.
 | a purge with every engine option | `TridentClient::purge(PurgeRequest …)` |
 | an endpoint the client has no method for yet | `Admin\Api::call()` — the one request path the client itself uses |
 
-## 1.6.0 (unreleased)
+## 1.7.0 (unreleased) — the security pieces every platform needs
+
+Moved out of the Shopware plugin, so the Sylius bundle (and every later
+platform) uses one implementation instead of a copy:
+
+- **`Http\NetworkGuard`** — addresses a Trident API URL may never reach:
+  link-local ranges (`169.254.0.0/16`, `fe80::/10`), the unspecified addresses
+  (`0.0.0.0/8`, `::`), every IPv6 form that carries an IPv4 address
+  (v4-mapped, v4-compatible, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`), numeric
+  host spellings (`2852039166`, octal, hex), and the cloud metadata services (`fd00:ec2::254`, `100.100.100.200`,
+  `metadata.google.internal`). Checked on the RESOLVED address. Private ranges
+  stay allowed: Trident normally is internal.
+- **`Http\TransportFactory`** — the PSR-18 client for Trident's admin API:
+  libcurl, no redirects (the token must not follow one), and **no proxy**:
+  `CURLOPT_NOPROXY=*`, so neither Guzzle nor libcurl uses an environment proxy
+  (`http_proxy`, `HTTPS_PROXY`, `ALL_PROXY`) for admin traffic — a proxy would
+  resolve the target itself (defeating the pin and the guard) and, on
+  `http://`, see the bearer token. The `NetworkGuard`'s checked address is
+  pinned for the connection (`CURLOPT_RESOLVE`), so DNS rebinding cannot swap
+  it. A deployment that must use a proxy passes it explicitly (`$proxy`,
+  `http(s)://host[:port]`); pinning is then off (the guard still checks the
+  name). A custom Guzzle handler is refused unless it declares that it honours
+  the curl options. Needs `guzzlehttp/guzzle` ^7.5 (suggested).
+- **`Security\TokenVault`** — an admin-stored API token encrypted at rest and
+  bound to its URL: XChaCha20-Poly1305 with the normalised URL (scheme, host,
+  port, path) as associated data; key = HKDF-SHA256 of the application secret
+  with a per-platform `$info` label. Pointing the URL elsewhere makes the token
+  unusable until it is re-entered. Needs ext-sodium.
+- **`Delivery\ApiHostAllowlist`** — the optional allowlist of API hosts
+  (`host` or `host:port`, exact matches; case, a trailing dot and IPv6
+  brackets normalised), with a reason per dropped instance.
+
+And, shared by the Shopware plugin and the Symfony bundle:
+
+- **`Admin\AdminService`** — the admin screens' logic (dashboard, purge,
+  cached pages, tags, coverage, warmer, launch, reflect, denoisers, bans,
+  backends, discovery, events) over `Admin\AdminClient`. A platform provides an
+  `Admin\AdminContext` factory (its settings, instances and `PurgeOutbox` —
+  its durable delivery) and a `ShopAdapter` (its hosts, URLs and catalogue
+  lookups; also `EntityInvalidator` when entity purges should go through the
+  platform's own invalidation, as Shopware's do). Pattern purges and bans are scoped to the shop's own hosts: the
+  engine matches a pattern against every host of a shared Trident.
+- **Second delivery (`Delivery\Purger::scheduleRedelivery()`)** — a purge can
+  be delivered again `$redeliverAfter` seconds later (Shopware and Symfony use
+  10 s; 0, the default, keeps the old behaviour), for a page rendered from data
+  the purge's transaction had not yet made visible. A store that records it
+  implements **`Delivery\ScheduledStore`**: such rows are not owed (not in
+  `pending`) until due, and an identical scheduled tag set is recorded once
+  per instance.
+- **`Delivery\Drainer::drainAll()`** — "deliver now": every row, whatever
+  its due time (second deliveries, backstop rows, rows in grace or backoff).
+  For operators after an incident and for test suites; the platforms expose
+  it as `trident:purge:drain --now`.
+
+## 1.6.0
 
 - **`Admin\WafView`** — the part of an instance's WAF export
   (`wafExport()`) and learned query scopes (`denoiserQueryScopes()`) that

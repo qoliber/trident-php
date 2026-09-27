@@ -25,6 +25,10 @@
         "qoliber/servermock": "^1.0",
         "squizlabs/php_codesniffer": "^3.7"
     },
+    "suggest": {
+        "guzzlehttp/guzzle": "^7.5 — for Http\\TransportFactory: libcurl, no redirects, the NetworkGuard pinned per request",
+        "ext-sodium": "for Security\\TokenVault: the admin-stored API token sealed to its URL"
+    },
     "autoload": {
         "psr-4": {
             "Qoliber\\Trident\\": "src/"

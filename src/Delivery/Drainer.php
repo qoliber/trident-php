@@ -63,6 +63,22 @@ final class Drainer
     }
 
     /**
+     * "Deliver now": every row owed to a configured instance, whatever its due
+     * time — a scheduled second delivery, a backstop row, a row still in its
+     * writer's grace, one in backoff. For operators after an incident and for
+     * test suites; a failure is retried on the real clock ($now).
+     */
+    public function drainAll(int $limit, int $now): DrainReport
+    {
+        if ($this->instances === []) {
+            return new DrainReport();
+        }
+        $names = array_map(static fn (Instance $i): string => $i->name, $this->instances);
+
+        return $this->deliverEntries($this->store->due($limit, PHP_INT_MAX, true, $names), $now);
+    }
+
+    /**
      * Deliver the given entries (the writing process's own rows, or a due batch).
      *
      * @param list<OutboxEntry> $entries
