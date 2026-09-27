@@ -14,6 +14,7 @@ namespace Qoliber\Trident\Testing;
 
 use Qoliber\Trident\Delivery\Backoff;
 use Qoliber\Trident\Delivery\OutboxEntry;
+use Qoliber\Trident\Delivery\NotBeforeStore;
 use Qoliber\Trident\Delivery\OutboxStore;
 
 /**
@@ -26,7 +27,7 @@ use Qoliber\Trident\Delivery\OutboxStore;
  *
  * @internal Not for production use.
  */
-class InMemoryOutboxStore implements OutboxStore
+class InMemoryOutboxStore implements NotBeforeStore
 {
     /** @var array<int, array{instance: string, tags: list<string>, attempts: int, created_at: int, next_attempt_at: int, last_error: ?string, last_error_at: ?int}> */
     public array $rows = [];
@@ -51,6 +52,48 @@ class InMemoryOutboxStore implements OutboxStore
             'last_error_at' => null,
         ];
         return $this->nextId - 1;
+    }
+
+    /** @var array<int, true> ids of not-before rows */
+    public array $notBefore = [];
+
+    public function recordScheduled(string $instance, array $tags, int $now, int $dueAt): int
+    {
+        $this->record($instance, $tags, $now, $dueAt);
+
+        return 1;
+    }
+
+    public function recordNotBefore(string $instance, array $tags, int $now, int $notBefore): int
+    {
+        foreach ($this->rows as $id => $row) {
+            if (isset($this->notBefore[$id]) && $row['instance'] === $instance && $row['tags'] === array_values($tags) && $row['next_attempt_at'] === $notBefore) {
+                return 0;
+            }
+        }
+        $id = $this->record($instance, $tags, $now, $notBefore);
+        $this->notBefore[$id] = true;
+
+        return 1;
+    }
+
+    public function dueEarly(int $limit, int $now, array $instances): array
+    {
+        $out = [];
+        foreach ($this->rows as $id => $row) {
+            if (!in_array($row['instance'], $instances, true)) {
+                continue;
+            }
+            if (isset($this->notBefore[$id]) && $row['next_attempt_at'] > $now) {
+                continue;
+            }
+            $out[] = new OutboxEntry($id, $row['instance'], $row['tags'], $row['attempts']);
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
     }
 
     public function byIds(array $ids): array

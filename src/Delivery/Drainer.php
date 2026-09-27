@@ -65,7 +65,8 @@ final class Drainer
     /**
      * "Deliver now": every row owed to a configured instance, whatever its due
      * time — a scheduled second delivery, a backstop row, a row still in its
-     * writer's grace, one in backoff. For operators after an incident and for
+     * writer's grace, one in backoff; but never a {@see NotBeforeStore}
+     * not-before row before its moment. For operators after an incident and for
      * test suites; a failure is retried on the real clock ($now).
      */
     public function drainAll(int $limit, int $now): DrainReport
@@ -75,7 +76,12 @@ final class Drainer
         }
         $names = array_map(static fn (Instance $i): string => $i->name, $this->instances);
 
-        return $this->deliverEntries($this->store->due($limit, PHP_INT_MAX, true, $names), $now);
+        // A not-before row (a scheduled price) is never delivered early.
+        $entries = $this->store instanceof NotBeforeStore
+            ? $this->store->dueEarly($limit, $now, $names)
+            : $this->store->due($limit, PHP_INT_MAX, true, $names);
+
+        return $this->deliverEntries($entries, $now);
     }
 
     /**

@@ -46,4 +46,19 @@ final class DrainAllTest extends TestCase
         self::assertSame(1, $drainer->drainAll(50, self::NOW)->failed);
         self::assertCount(1, $store->due(50, self::NOW + 3600, false, ['edge']), 'the failed row is due again within the hour');
     }
+
+    public function testANotBeforeRowIsNeverDeliveredEarly(): void
+    {
+        $store = new InMemoryOutboxStore();
+        $store->recordScheduled('edge', ['backstop'], self::NOW, self::NOW + 120);
+        $store->recordNotBefore('edge', ['price_starts'], self::NOW, self::NOW + 600);
+        self::assertSame(0, $store->recordNotBefore('edge', ['price_starts'], self::NOW, self::NOW + 600), 'the same moment is recorded once');
+        $http = (new FakeTransport())->answer('edge', 200, '{"purged":1,"mode":"soft"}');
+        $drainer = new Drainer($store, [new Instance('edge', 'http://edge:9301', 't')], fn (Instance $i): PurgeClient => new PurgeClient($i, $http));
+
+        self::assertSame(1, $drainer->drainAll(50, self::NOW)->delivered, 'the backstop goes now, the price start waits');
+        self::assertSame([['price_starts']], array_values(array_map(static fn (array $r): array => $r['tags'], $store->rows)));
+        self::assertSame(0, $drainer->drainAll(50, self::NOW + 599)->delivered);
+        self::assertSame(1, $drainer->drainAll(50, self::NOW + 600)->delivered, 'delivered at its moment');
+    }
 }

@@ -310,6 +310,19 @@ every class that implements it. Type against `TridentClient` to use them.
 | a purge with every engine option | `TridentClient::purge(PurgeRequest …)` |
 | an endpoint the client has no method for yet | `Admin\Api::call()` — the one request path the client itself uses |
 
+## 1.8.0 (unreleased) — one delivery, settings and tag policy for every platform
+
+Five public classes that were platform code before: `Delivery\OutboxDelivery`
+(record a purge per instance, flush this request's rows, drain, `drainAll()`,
+status, and a direct send when the outbox cannot be written),
+`Config\Settings` + `Config\SettingsResolver` (the deployment configuration
+wins over the admin setting; an environment token goes only to environment
+URLs; the host allowlist; purge mode, tag prefix, debug headers) and
+`Tags\TagPolicy` (the same tag names in the header and in the purge: prefix,
+200 tags / 4 KiB, per-kind overflow tags). Used by trident-symfony and the
+PrestaShop module. A blank tag is now ignored instead of becoming the bare
+prefix. Integrations using them require `^1.8`.
+
 ## 1.7.0 (unreleased) — the security pieces every platform needs
 
 Moved out of the Shopware plugin, so the Sylius bundle (and every later
