@@ -3,6 +3,13 @@
 The per-version notes live in README.md (one section per release); this file
 lists them in order.
 
+## 1.8.1 — unreleased
+- New: `Compatibility` — the Trident release line this library targets
+  (`Compatibility::TRIDENT = '1.8'`) and `Compatibility::warning()`, which the shared
+  `Admin\AdminService` dashboard now shows as a "compatibility" row when a connected
+  engine runs another MAJOR.MINOR. Packages are versioned in lockstep with the engine
+  (MAJOR.MINOR = Trident's, PATCH per package).
+
 ## 1.8.0 — unreleased
 - New: `Delivery\OutboxDelivery`, `Config\Settings`, `Config\SettingsResolver`,
   `Tags\TagPolicy` (moved from qoliber/trident-symfony so every platform shares them).

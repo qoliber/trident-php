@@ -6,6 +6,7 @@ namespace Qoliber\Trident\Admin;
 
 use Psr\Log\LoggerInterface;
 use Qoliber\Trident\Client\TridentClient;
+use Qoliber\Trident\Compatibility;
 use Qoliber\Trident\Delivery\PurgeClient;
 use Qoliber\Trident\Purge\PurgeRequest;
 use Qoliber\Trident\Http\TransportFactory;
@@ -112,6 +113,10 @@ class AdminService
                     return [
                         'summary' => [
                             'version' => $status['version'],
+                            // Lockstep versioning: a warning when the engine is on
+                            // another MAJOR.MINOR than this integration.
+                            'compatibility' => Compatibility::warning($status['version'])
+                                ?? sprintf('OK — built for Trident %s.x', Compatibility::TRIDENT),
                             'license' => $status['license'],
                             'health' => is_array($health) ? ($health['status'] ?? null) : null,
                             'uptime_seconds' => is_array($health) ? ($health['uptime_seconds'] ?? null) : null,

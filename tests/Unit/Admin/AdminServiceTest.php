@@ -24,6 +24,7 @@ final class AdminServiceTest extends TestCase
     /** @var list<array{string, string, mixed}> */
     private array $sent = [];
     private FakeOutbox $outbox;
+    private string $engineVersion = '1.8.0';
 
     protected function setUp(): void
     {
@@ -36,7 +37,7 @@ final class AdminServiceTest extends TestCase
             $this->sent[] = [$r->getMethod(), $r->getUri()->getPath(), json_decode((string) $r->getBody(), true)];
 
             return Create::promiseFor(new Response(200, ['Content-Type' => 'application/json'], match ($r->getUri()->getPath()) {
-                '/admin/status' => '{"version":"1.8.0","mode":"licensed","license":"valid"}',
+                '/admin/status' => json_encode(['version' => $this->engineVersion, 'mode' => 'licensed', 'license' => 'valid']),
                 '/admin/bans' => '{"success":true,"id":1,"pattern":"x"}',
                 default => '{"total_purged":0,"purged":0,"mode":"soft"}',
             }));
@@ -70,6 +71,29 @@ final class AdminServiceTest extends TestCase
         };
 
         return new AdminService($context, $shop ?? new FakeShop(), $transports);
+    }
+
+    /**
+     * Lockstep versioning: the dashboard says so when the connected engine is
+     * on another MAJOR.MINOR than the integration — for every platform, since
+     * they all render this summary.
+     */
+    public function testTheDashboardWarnsWhenTheEngineIsOnAnotherReleaseLine(): void
+    {
+        $this->engineVersion = '1.9.0';
+        $page = json_encode($this->service()->screen('dashboard', []), JSON_UNESCAPED_UNICODE);
+        self::assertIsString($page);
+        self::assertStringContainsString('Trident 1.9.0 is connected', $page);
+        self::assertStringContainsString('Upgrade this integration', $page);
+    }
+
+    public function testTheDashboardSaysOkOnTheSameReleaseLine(): void
+    {
+        $this->engineVersion = '1.8.3';
+        $page = json_encode($this->service()->screen('dashboard', []), JSON_UNESCAPED_UNICODE);
+        self::assertIsString($page);
+        self::assertStringContainsString('OK — built for Trident 1.8.x', $page);
+        self::assertStringNotContainsString('is connected, but', $page);
     }
 
     public function testAPatternPurgeIsScopedToTheShopsHosts(): void

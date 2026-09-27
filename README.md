@@ -310,6 +310,16 @@ every class that implements it. Type against `TridentClient` to use them.
 | a purge with every engine option | `TridentClient::purge(PurgeRequest …)` |
 | an endpoint the client has no method for yet | `Admin\Api::call()` — the one request path the client itself uses |
 
+## 1.8.1 — which Trident this is for
+
+Packages are versioned in lockstep with the engine: MAJOR.MINOR is Trident's
+(library 1.8.x works with Trident 1.8), PATCH is the library's own.
+`Qoliber\Trident\Compatibility::TRIDENT` names the release line (`'1.8'`), and
+`Compatibility::warning($engineVersion)` returns a message for an admin screen
+when a connected engine runs another MAJOR.MINOR (null when it matches or is
+unreadable). The shared `Admin\AdminService` dashboard shows it as its
+"compatibility" row, so every platform built on it gets the warning.
+
 ## 1.8.0 (unreleased) — one delivery, settings and tag policy for every platform
 
 Five public classes that were platform code before: `Delivery\OutboxDelivery`
@@ -488,6 +498,13 @@ cd docker
 docker-compose up -d
 docker-compose exec php-app php /var/www/html/test-api.php
 ```
+
+## Versioning
+
+Versions follow Trident: qoliber/trident-php 1.8.x works with Trident 1.8. MAJOR.MINOR moves
+with the engine (every Trident X.Y.0 release is also a release of this package,
+changed or not); the PATCH number is this package's own. The
+admin screens warn when a connected Trident runs another release line.
 
 ## License
 
