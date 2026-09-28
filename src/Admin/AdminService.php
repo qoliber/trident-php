@@ -224,7 +224,17 @@ class AdminService
             'purge_host' => (static fn (string $host) => $on(static fn (TridentClient $c) => $c->purgeHost($host, $soft)))(self::host($body, $hosts, false)),
             'purge_all' => $this->purgeAll(),
             'purge_preview' => (static fn (string $pattern) => $on(static fn (TridentClient $c) => $c->purgePreview($pattern)))($str('pattern')),
-            'warmer_run' => $on(static fn (TridentClient $c) => $c->warmerRun()),
+            // Optional sitemaps (one per line; `.xml` or `.xml.gz`; relative
+            // paths resolve on this shop). Empty: the configured sources, as
+            // before. Only this shop's hosts: on a shared Trident a shop may not
+            // warm another's sitemap.
+            'warmer_run' => (function () use ($on, $body, $hosts): array {
+                $given = $body['sitemaps'] ?? [];
+                $blank = trim(is_string($given) ? $given : implode('', array_map('strval', (array) $given))) === '';
+                $sitemaps = $blank ? [] : $this->ownUrls($given, $hosts, true);
+
+                return $on(static fn (TridentClient $c) => $c->warmerRun($sitemaps));
+            })(),
             'warmer_cancel' => $on(static fn (TridentClient $c) => $c->warmerCancel()),
             'warmer_queue_shop' => $this->warmShop(max(1, min(5000, (int) ($body['limit'] ?? 1000))), $names),
             'warmer_queue' => (function () use ($on, $body, $hosts): array {

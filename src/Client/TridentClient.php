@@ -865,10 +865,33 @@ class TridentClient implements TridentClientInterface
         return new Payload($this->request('GET', '/admin/warmer/status'));
     }
 
-    /** Warm every configured source now (202 `started`, `queued`). */
-    public function warmerRun(): Payload
+    /**
+     * Start a warming run now (202 `started`, `queued`, `source`).
+     *
+     * With no arguments the run warms the configured `[cache.warmer].sources`,
+     * as it always has. Name sitemaps (`.xml` or `.xml.gz`; an index expands)
+     * and/or page URLs to warm those instead — a platform's "warm now from my
+     * sitemap". Requires Trident 1.8.0 or later; an older engine ignores the
+     * body and runs its configured sources.
+     *
+     * @param list<string> $sitemaps http(s) sitemap URLs, at most 50
+     * @param list<string> $urls     page URLs to warm as they are
+     */
+    public function warmerRun(array $sitemaps = [], array $urls = []): Payload
     {
-        return new Payload($this->request('POST', '/admin/warmer/run'));
+        $sitemaps = array_values(array_filter(array_map('trim', $sitemaps), static fn (string $u): bool => $u !== ''));
+        $urls = array_values(array_filter(array_map('trim', $urls), static fn (string $u): bool => $u !== ''));
+        if ($sitemaps === [] && $urls === []) {
+            return new Payload($this->request('POST', '/admin/warmer/run'));
+        }
+        $body = [];
+        if ($sitemaps !== []) {
+            $body['sitemaps'] = $sitemaps;
+        }
+        if ($urls !== []) {
+            $body['urls'] = $urls;
+        }
+        return new Payload($this->request('POST', '/admin/warmer/run', $body));
     }
 
     public function warmerCancel(): Payload

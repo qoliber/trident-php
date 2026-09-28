@@ -255,6 +255,27 @@ final class ClientEndpointsTest extends TestCase
         self::assertSame('http://edge:9301/admin/warmer/cancel', $this->sent()['url']);
     }
 
+    public function testAWarmerRunWithoutArgumentsWarmsTheConfiguredSources(): void
+    {
+        $this->t->answer('edge', 202, '{"status":"started","queued":3,"source":"config"}');
+        $p = $this->c->warmerRun();
+        self::assertSame(['POST', 'http://edge:9301/admin/warmer/run', null], array_values($this->sent()), 'no body: unchanged request');
+        self::assertSame('config', $p->string('source'));
+    }
+
+    public function testAWarmerRunCanNameItsOwnSitemapsAndUrls(): void
+    {
+        $this->t->answer('edge', 202, '{"status":"started","queued":2,"source":"request"}');
+        $this->c->warmerRun([' https://shop.example/sitemap.xml.gz ', ''], ['https://shop.example/a']);
+        self::assertSame(
+            ['sitemaps' => ['https://shop.example/sitemap.xml.gz'], 'urls' => ['https://shop.example/a']],
+            $this->sent()['body'],
+            'trimmed, blanks dropped'
+        );
+        $this->c->warmerRun(['   ']);
+        self::assertNull($this->sent()['body'], 'only blanks: the configured sources, no body');
+    }
+
     public function testDenoisers(): void
     {
         $this->c->denoiserQueryPin('utm_x', 'noise', 'shop.example');

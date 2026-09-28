@@ -103,6 +103,26 @@ final class AdminServiceTest extends TestCase
         self::assertSame('^[A-Z]+:[a-z]+:(?:shop\.example|shop\.example:8443):/sale/', $purge[2]['pattern']);
     }
 
+    public function testAWarmerRunWarmsTheShopsOwnSitemapsOnly(): void
+    {
+        $this->service()->action('warmer_run', ['sitemaps' => "https://shop.example/sitemap.xml.gz\n/de/sitemap.xml\n"]);
+        $run = array_values(array_filter($this->sent, static fn ($s) => $s[1] === '/admin/warmer/run'))[0];
+        self::assertSame(['https://shop.example/sitemap.xml.gz', 'https://shop.example/de/sitemap.xml'], $run[2]['sitemaps'], 'relative paths resolve on the shop');
+
+        $this->sent = [];
+        try {
+            $this->service()->action('warmer_run', ['sitemaps' => 'https://other-tenant.example/sitemap.xml']);
+            self::fail('expected AdminException');
+        } catch (AdminException $e) {
+            self::assertStringContainsString('not on this shop', $e->getMessage());
+        }
+        self::assertSame([], array_filter($this->sent, static fn ($s) => $s[1] === '/admin/warmer/run'), 'nothing sent for a foreign sitemap');
+
+        $this->service()->action('warmer_run', []);
+        $run = array_values(array_filter($this->sent, static fn ($s) => $s[1] === '/admin/warmer/run'))[0];
+        self::assertNull($run[2], 'no sitemaps: the configured sources, no body');
+    }
+
     public function testAnInvalidRegexIsRefusedBeforeAnyRequest(): void
     {
         try {
