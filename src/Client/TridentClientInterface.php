@@ -230,7 +230,11 @@ interface TridentClientInterface
     /**
      * Start launch mode with URL warming
      *
-     * @param array{name?: string, urls?: array<string>, sitemap_url?: string, maintenance?: array{title?: string, message?: string}, options?: array{timeout?: string, auto_complete?: bool, concurrency?: int}} $options
+     * Options use the singleton API's top-level fields. Named launches,
+     * sitemap_url and nested options are unsupported. Omitted controls use
+     * server defaults; explicit false is preserved.
+     *
+     * @param array{urls: list<string>, maintenance?: array{title?: string, message?: string, status_code?: int, retry_after?: int}, auto_complete?: bool, bypass_ips?: list<string>, bypass_paths?: list<string>} $options
      */
     public function launchStart(array $options): LaunchResponse;
 

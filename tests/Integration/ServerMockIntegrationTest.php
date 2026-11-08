@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace Qoliber\Trident\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\Group;
 use Qoliber\ServerMock\Mock;
 use Qoliber\ServerMock\MockServer;
 use Qoliber\Trident\TridentFactory;
@@ -20,9 +21,8 @@ use Qoliber\Trident\TridentManager;
 /**
  * Integration tests using ServerMock - no actual Trident required
  *
- * @group integration
- * @group servermock
  */
+#[Group('integration')]
 class ServerMockIntegrationTest extends TestCase
 {
     private MockServer $server;
@@ -46,6 +46,7 @@ class ServerMockIntegrationTest extends TestCase
     // Health & Status
     // ========================================
 
+    #[Group('servermock')]
     public function testHealth(): void
     {
         Mock::get('/admin/health')
@@ -58,6 +59,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals('healthy', $response->status);
     }
 
+    #[Group('servermock')]
     public function testHealthUnhealthy(): void
     {
         Mock::get('/admin/health')
@@ -69,6 +71,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertFalse($response->isHealthy());
     }
 
+    #[Group('servermock')]
     public function testReady(): void
     {
         Mock::get('/admin/ready')
@@ -86,6 +89,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals('ready', $response->status);
     }
 
+    #[Group('servermock')]
     public function testStats(): void
     {
         Mock::get('/admin/stats')
@@ -109,6 +113,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(50.0, $response->memoryUsagePercent);
     }
 
+    #[Group('servermock')]
     public function testTopUrls(): void
     {
         Mock::get('/admin/stats/top')
@@ -132,6 +137,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertCount(2, $response->urls);
     }
 
+    #[Group('servermock')]
     public function testTagStats(): void
     {
         Mock::get('/admin/tags/stats')
@@ -150,6 +156,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertCount(2, $response->tags);
     }
 
+    #[Group('servermock')]
     public function testRefreshQueue(): void
     {
         Mock::get('/admin/refresh/queue')
@@ -167,6 +174,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(4, $response->workers);
     }
 
+    #[Group('servermock')]
     public function testCacheEntry(): void
     {
         Mock::get('/admin/cache/entry')
@@ -190,6 +198,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals('fresh', $response->status);
     }
 
+    #[Group('servermock')]
     public function testCacheEntryNotFound(): void
     {
         Mock::get('/admin/cache/entry')
@@ -201,6 +210,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertFalse($response->found);
     }
 
+    #[Group('servermock')]
     public function testLatencyStats(): void
     {
         Mock::get('/admin/stats/latency')
@@ -224,6 +234,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(75.0, $response->getP95Ms());
     }
 
+    #[Group('servermock')]
     public function testErrorStats(): void
     {
         Mock::get('/admin/stats/errors')
@@ -246,6 +257,7 @@ class ServerMockIntegrationTest extends TestCase
     // Backends
     // ========================================
 
+    #[Group('servermock')]
     public function testBackends(): void
     {
         Mock::get('/admin/backends')
@@ -264,6 +276,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertCount(2, $response->backends);
     }
 
+    #[Group('servermock')]
     public function testDrainBackend(): void
     {
         Mock::post('/admin/backends/drain')
@@ -275,6 +288,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testRestoreBackend(): void
     {
         Mock::post('/admin/backends/restore')
@@ -286,6 +300,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testBackendDetail(): void
     {
         Mock::get('/admin/backends/detail')
@@ -310,6 +325,7 @@ class ServerMockIntegrationTest extends TestCase
     // Banning
     // ========================================
 
+    #[Group('servermock')]
     public function testBans(): void
     {
         Mock::get('/admin/bans')
@@ -330,6 +346,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertCount(2, $response->bans);
     }
 
+    #[Group('servermock')]
     public function testCreateBan(): void
     {
         Mock::post('/admin/bans')
@@ -347,6 +364,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals('ban-123', $response->id);
     }
 
+    #[Group('servermock')]
     public function testDeleteBan(): void
     {
         Mock::delete('/admin/bans/ban-123')
@@ -362,6 +380,7 @@ class ServerMockIntegrationTest extends TestCase
     // Configuration
     // ========================================
 
+    #[Group('servermock')]
     public function testReload(): void
     {
         Mock::post('/admin/config/reload')
@@ -373,6 +392,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testConfig(): void
     {
         Mock::get('/admin/config')
@@ -388,6 +408,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertArrayHasKey('listen', $response->config);
     }
 
+    #[Group('servermock')]
     public function testRules(): void
     {
         Mock::get('/admin/rules')
@@ -407,6 +428,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(3, $response->getTotalRules());
     }
 
+    #[Group('servermock')]
     public function testValidateRules(): void
     {
         Mock::post('/admin/rules/validate')
@@ -422,6 +444,7 @@ class ServerMockIntegrationTest extends TestCase
     // Purge Operations
     // ========================================
 
+    #[Group('servermock')]
     public function testPurgeUrl(): void
     {
         Mock::post('/admin/purge/url')
@@ -434,6 +457,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(1, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeUrls(): void
     {
         Mock::post('/admin/purge/urls')
@@ -450,6 +474,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(3, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeUrlPattern(): void
     {
         Mock::post('/admin/purge/pattern')
@@ -462,6 +487,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(10, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeTag(): void
     {
         Mock::post('/admin/purge/tag')
@@ -474,6 +500,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(5, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeTags(): void
     {
         Mock::post('/admin/purge/tags')
@@ -486,6 +513,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(15, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeTagsAll(): void
     {
         Mock::post('/admin/purge/tags')
@@ -497,6 +525,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testPurgeTagPattern(): void
     {
         Mock::post('/admin/purge/tag/pattern')
@@ -509,6 +538,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(50, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeAll(): void
     {
         Mock::post('/admin/cache/clear')
@@ -521,6 +551,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(1000, $response->purgedCount);
     }
 
+    #[Group('servermock')]
     public function testPurgeHash(): void
     {
         Mock::post('/admin/purge/hash')
@@ -532,6 +563,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testBan(): void
     {
         Mock::post('/admin/purge/url')
@@ -547,6 +579,7 @@ class ServerMockIntegrationTest extends TestCase
     // New Features: Cache Browsing
     // ========================================
 
+    #[Group('servermock')]
     public function testCacheEntries(): void
     {
         Mock::get('/admin/cache/entries')
@@ -580,6 +613,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->hasMore);
     }
 
+    #[Group('servermock')]
     public function testCacheTags(): void
     {
         Mock::get('/admin/cache/tags')
@@ -604,6 +638,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertFalse($response->hasMore);
     }
 
+    #[Group('servermock')]
     public function testPurgePreview(): void
     {
         Mock::post('/admin/purge/preview')
@@ -626,6 +661,7 @@ class ServerMockIntegrationTest extends TestCase
     // New Features: Advanced Statistics
     // ========================================
 
+    #[Group('servermock')]
     public function testProtectionStats(): void
     {
         Mock::get('/admin/stats/protection')
@@ -653,6 +689,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->hasActiveTrips());
     }
 
+    #[Group('servermock')]
     public function testMemoryStats(): void
     {
         Mock::get('/admin/memory')
@@ -675,6 +712,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals('512 MB', $response->getTotalFormatted());
     }
 
+    #[Group('servermock')]
     public function testConnections(): void
     {
         Mock::get('/admin/connections')
@@ -712,6 +750,7 @@ class ServerMockIntegrationTest extends TestCase
     // New Features: Cache Persistence
     // ========================================
 
+    #[Group('servermock')]
     public function testSnapshot(): void
     {
         Mock::post('/admin/snapshot')
@@ -736,6 +775,7 @@ class ServerMockIntegrationTest extends TestCase
     // New Features: DNS Discovery
     // ========================================
 
+    #[Group('servermock')]
     public function testDiscoveryList(): void
     {
         Mock::get('/admin/discovery')
@@ -759,6 +799,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(1, $response->total);
     }
 
+    #[Group('servermock')]
     public function testDiscoveryDetail(): void
     {
         Mock::get('/admin/discovery/detail')
@@ -784,6 +825,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(2, $response->getHealthyCount());
     }
 
+    #[Group('servermock')]
     public function testDiscoveryRefresh(): void
     {
         Mock::post('/admin/discovery/refresh')
@@ -806,6 +848,7 @@ class ServerMockIntegrationTest extends TestCase
     // Launch Mode (Enterprise)
     // ========================================
 
+    #[Group('servermock')]
     public function testLaunchStart(): void
     {
         Mock::post('/admin/launch/start')
@@ -827,6 +870,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals('launch-abc123', $response->launchId);
     }
 
+    #[Group('servermock')]
     public function testLaunchStatus(): void
     {
         Mock::get('/admin/launch/status')
@@ -850,6 +894,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertEquals(50, $response->getProgressPercent());
     }
 
+    #[Group('servermock')]
     public function testLaunchComplete(): void
     {
         Mock::post('/admin/launch/complete')
@@ -865,6 +910,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testLaunchAbort(): void
     {
         Mock::post('/admin/launch/abort')
@@ -884,6 +930,7 @@ class ServerMockIntegrationTest extends TestCase
     // Error Handling
     // ========================================
 
+    #[Group('servermock')]
     public function testHandles404Error(): void
     {
         Mock::get('/admin/health')
@@ -896,6 +943,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->trident->health();
     }
 
+    #[Group('servermock')]
     public function testHandles500Error(): void
     {
         Mock::get('/admin/health')
@@ -908,6 +956,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->trident->health();
     }
 
+    #[Group('servermock')]
     public function testHandlesAuthenticationError(): void
     {
         Mock::get('/admin/health')
@@ -924,6 +973,7 @@ class ServerMockIntegrationTest extends TestCase
     // Convenience Methods
     // ========================================
 
+    #[Group('servermock')]
     public function testPurgeProduct(): void
     {
         Mock::post('/admin/purge/tag')
@@ -935,6 +985,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testPurgeCategory(): void
     {
         Mock::post('/admin/purge/tag')
@@ -946,6 +997,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testPurgePage(): void
     {
         Mock::post('/admin/purge/tag')
@@ -957,6 +1009,7 @@ class ServerMockIntegrationTest extends TestCase
         $this->assertTrue($response->isSuccess());
     }
 
+    #[Group('servermock')]
     public function testTagCollectionPurge(): void
     {
         Mock::post('/admin/purge/tags')
@@ -977,6 +1030,7 @@ class ServerMockIntegrationTest extends TestCase
     // SSE Event Stream
     // ========================================
 
+    #[Group('servermock')]
     public function testEventsReturnsEventStream(): void
     {
         $eventStream = $this->trident->events();

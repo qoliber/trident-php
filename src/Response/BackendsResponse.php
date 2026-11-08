@@ -16,7 +16,7 @@ class BackendsResponse
     use CarriesRaw;
 
     /**
-     * @param array<array{name: string, host: string, port: int, status: string, healthy: bool, total_requests: int, total_errors: int, active_connections: int, avg_response_ms: float}> $backends
+     * @param array<array{name: string, host: string, port: int, status: string, healthy?: bool, total_requests: int, total_errors: int, active_connections: int, avg_response_ms: float}> $backends
      */
     public function __construct(
         public readonly int $total,
@@ -44,6 +44,7 @@ class BackendsResponse
         return $this->unhealthy === 0 && $this->total > 0;
     }
 
+    /** @return array{name: string, host: string, port: int, status: string, healthy?: bool, total_requests: int, total_errors: int, active_connections: int, avg_response_ms: float}|null */
     public function getBackend(string $name): ?array
     {
         foreach ($this->backends as $backend) {

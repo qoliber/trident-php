@@ -61,6 +61,9 @@ final class CompatibilityTest extends TestCase
         }
         $toml = (string) file_get_contents($cargo);
         self::assertSame(1, preg_match('/^\[workspace\.package\].*?^version\s*=\s*"([^"]+)"/ms', $toml, $m), 'workspace version not found');
+        if (!isset($m[1])) {
+            self::fail('workspace version capture missing');
+        }
         self::assertSame(
             Compatibility::line($m[1]),
             Compatibility::TRIDENT,

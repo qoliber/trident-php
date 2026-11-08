@@ -26,6 +26,7 @@ class TagCollection implements Countable, IteratorAggregate
 
     private string $separator = ',';
 
+    /** @param array<array-key, string> $tags */
     public function __construct(array $tags = [], string $separator = ',')
     {
         $this->separator = $separator;
@@ -41,6 +42,9 @@ class TagCollection implements Countable, IteratorAggregate
 
     public static function fromHeader(string $headerValue, string $separator = ','): self
     {
+        if ($separator === '') {
+            throw new \ValueError('explode(): Argument #1 ($separator) cannot be empty');
+        }
         $tags = array_map('trim', explode($separator, $headerValue));
         $tags = array_filter($tags, fn(string $tag) => $tag !== '');
 

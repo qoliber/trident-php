@@ -111,8 +111,8 @@ class TopUrlsResponseTest extends TestCase
 
     public function testConstructorPropertiesAreReadonly(): void
     {
-        $urls = [['path' => '/test', 'requests' => 100]];
-        $totals = ['requests' => 100];
+        $urls = [['path' => '/test', 'requests' => 100, 'bytes' => 1000, 'hits' => 80, 'misses' => 20, 'errors' => 0, 'hit_ratio' => 80.0, 'avg_duration_ms' => 1.0]];
+        $totals = $urls[0];
 
         $response = new TopUrlsResponse(
             windowSecs: 7200,

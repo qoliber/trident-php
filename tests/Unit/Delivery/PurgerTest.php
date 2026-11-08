@@ -22,6 +22,12 @@ final class PurgerTest extends TestCase
     /** @var list<callable> */
     private array $deferred = [];
 
+    /** @return list<array<string, mixed>> */
+    private function requests(): array
+    {
+        return $this->http->requests;
+    }
+
     protected function setUp(): void
     {
         $this->store = new InMemoryOutboxStore();
@@ -70,12 +76,12 @@ final class PurgerTest extends TestCase
         $purger = $this->purger(self::one());
         $purger->purgeTags(['p_1', 'shop']);
         self::assertCount(1, $this->store->rows, 'recorded before any HTTP');
-        self::assertSame([], $this->http->requests, 'nothing sent during the request');
+        self::assertCount(0, $this->http->requests, 'nothing sent during the request');
 
         $this->endRequest();
         self::assertSame([], $this->store->rows, 'acknowledged → removed');
         self::assertSame([['p_1', 'shop']], $this->http->purgedTags('edge1'));
-        self::assertSame('Bearer tok', $this->http->requests[0]['headers']['Authorization']);
+        self::assertSame('Bearer tok', $this->requests()[0]['headers']['Authorization']);
         self::assertSame('soft', json_decode((string) $this->http->requests[0]['body'], true)['mode']);
     }
 
@@ -109,6 +115,7 @@ final class PurgerTest extends TestCase
 
         self::assertCount(1, $this->store->rows, 'not acknowledged → kept');
         $row = reset($this->store->rows);
+        self::assertIsArray($row);
         self::assertSame(1, $row['attempts']);
         self::assertSame('HTTP 401 — Unauthorized', $row['last_error']);
         self::assertSame($this->now + 1, $row['next_attempt_at']);
@@ -128,11 +135,17 @@ final class PurgerTest extends TestCase
         $purger->purgeTags(['a']);
         $this->endRequest();
         foreach ([2, 4, 8] as $expected) {
-            $this->now = reset($this->store->rows)['next_attempt_at'];
+            $row = reset($this->store->rows);
+            self::assertIsArray($row);
+            $this->now = $row['next_attempt_at'];
             $purger->drain();
-            self::assertSame($this->now + $expected, reset($this->store->rows)['next_attempt_at']);
+            $row = reset($this->store->rows);
+            self::assertIsArray($row);
+            self::assertSame($this->now + $expected, $row['next_attempt_at']);
         }
-        self::assertSame(4, reset($this->store->rows)['attempts']);
+        $row = reset($this->store->rows);
+        self::assertIsArray($row);
+        self::assertSame(4, $row['attempts']);
     }
 
     public function testUnreachableInstanceIsTriedOncePerDrain(): void
@@ -177,7 +190,7 @@ final class PurgerTest extends TestCase
         self::assertSame([], $this->http->purgedTags('edge1'), 'edge-1 is not purged again');
         self::assertSame([['p_9']], $this->http->purgedTags('edge2'));
         self::assertSame([], $this->store->rows);
-        self::assertSame('Bearer tok2', $this->http->requests[0]['headers']['Authorization']);
+        self::assertSame('Bearer tok2', $this->requests()[0]['headers']['Authorization']);
     }
 
     public function testRowsOwedToARemovedInstanceAreKeptAndNotSent(): void
@@ -226,7 +239,9 @@ final class PurgerTest extends TestCase
         $purger->purgeTags(array_map(static fn (int $n): string => "t{$n}", range(1, 1500)));
         $this->endRequest();
         self::assertCount(1, $this->store->rows);
-        self::assertCount(500, reset($this->store->rows)['tags']);
+        $row = reset($this->store->rows);
+        self::assertIsArray($row);
+        self::assertCount(500, $row['tags']);
     }
 
     /**

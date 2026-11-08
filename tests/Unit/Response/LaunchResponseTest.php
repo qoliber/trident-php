@@ -135,6 +135,35 @@ class LaunchResponseTest extends TestCase
         $this->assertFalse($response->isMaintenanceActive());
     }
 
+    public function testNativeStartPayloadHasNoLaunchIdentity(): void
+    {
+        $data = [
+            'success' => true,
+            'message' => 'Launch mode started successfully',
+            'total_urls' => 2,
+        ];
+        $response = LaunchResponse::fromArray($data);
+
+        $this->assertTrue($response->isSuccess());
+        $this->assertSame(2, $response->urlsTotal);
+        $this->assertNull($response->launchId);
+        $this->assertNull($response->status);
+        $this->assertSame($data, $response->raw());
+    }
+
+    public function testNativeAbortAcknowledgementDoesNotInventLifecycleState(): void
+    {
+        $data = ['success' => true, 'message' => 'Launch mode aborted'];
+        $response = LaunchResponse::fromArray($data);
+
+        $this->assertTrue($response->isSuccess());
+        $this->assertSame('Launch mode aborted', $response->message);
+        $this->assertNull($response->launchId);
+        $this->assertNull($response->status);
+        $this->assertFalse($response->isAborted());
+        $this->assertSame($data, $response->raw());
+    }
+
     public function testConstructorPropertiesAreReadonly(): void
     {
         $response = new LaunchResponse(

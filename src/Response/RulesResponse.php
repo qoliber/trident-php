@@ -16,8 +16,8 @@ class RulesResponse
     use CarriesRaw;
 
     /**
-     * @param array<array{name: string, priority: int, enabled: bool, evaluations: int, matches: int}> $request
-     * @param array<array{name: string, priority: int, enabled: bool, evaluations: int, matches: int}> $response
+     * @param array<array{name: string, priority: int, enabled: bool, evaluations?: int, matches?: int}> $request
+     * @param array<array{name: string, priority: int, enabled: bool, evaluations?: int, matches?: int}> $response
      */
     public function __construct(
         public readonly int $requestRules = 0,

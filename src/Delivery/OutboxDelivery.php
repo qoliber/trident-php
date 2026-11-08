@@ -198,7 +198,7 @@ final class OutboxDelivery implements PurgeOutbox
         $stats = $this->store->stats(($this->clock)());
         $configured = array_flip($this->settings->instanceNames());
         $orphaned = [];
-        foreach ($stats['by_instance'] ?? [] as $name => $count) {
+        foreach ($stats['by_instance'] as $name => $count) {
             if (!isset($configured[$name])) {
                 $orphaned[(string) $name] = (int) $count;
             }

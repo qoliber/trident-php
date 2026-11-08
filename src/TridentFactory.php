@@ -11,7 +11,6 @@ declare(strict_types=1);
 
 namespace Qoliber\Trident;
 
-use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
@@ -19,6 +18,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Log\LoggerInterface;
 use Qoliber\Trident\Cache\TagResolver;
 use Qoliber\Trident\Client\TridentClient;
+use Qoliber\Trident\Http\TransportFactory;
 
 /**
  * Factory for creating Trident instances with sensible defaults
@@ -33,11 +33,7 @@ class TridentFactory
         ?string $apiKey = null,
         ?LoggerInterface $logger = null
     ): TridentManager {
-        // Use Guzzle as default HTTP client
-        $httpClient = new GuzzleClient([
-            'timeout' => 10,
-            'connect_timeout' => 5,
-        ]);
+        $httpClient = self::defaultHttpClient();
 
         $httpFactory = new HttpFactory();
 
@@ -94,10 +90,7 @@ class TridentFactory
         ?string $apiKey = null,
         ?LoggerInterface $logger = null
     ): TridentClient {
-        $httpClient = new GuzzleClient([
-            'timeout' => 10,
-            'connect_timeout' => 5,
-        ]);
+        $httpClient = self::defaultHttpClient();
 
         $httpFactory = new HttpFactory();
 
@@ -109,5 +102,16 @@ class TridentFactory
             $httpFactory,
             $logger
         );
+    }
+
+    private static function defaultHttpClient(): ClientInterface
+    {
+        if (!\extension_loaded('curl') || !\function_exists('curl_init')
+            || !\function_exists('curl_exec') || !\defined('CURLOPT_RESOLVE')
+            || !\defined('CURLOPT_NOPROXY')) {
+            throw new \LogicException('The default TridentFactory client requires ext-curl for guarded connections; use createWithClient() for an explicitly configured PSR-18 client');
+        }
+
+        return (new TransportFactory(timeout: 10.0, connectTimeout: 5.0))->client();
     }
 }

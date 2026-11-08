@@ -21,9 +21,12 @@ use Qoliber\Trident\Tags\TagSet;
  * this library is the reference, and the Python and JavaScript libraries run
  * the same file. A clone of the published mirror has no vectors; the tests
  * are skipped there.
+ *
+ * @phpstan-type Vector array<array-key, mixed>
  */
 final class ContractVectorsTest extends TestCase
 {
+    /** @return array<string, array{Vector|null}> */
     private static function vectors(string $section): array
     {
         $file = dirname(__DIR__, 3) . '/contract/trident-contract.json';
@@ -38,6 +41,10 @@ final class ContractVectorsTest extends TestCase
         return $out;
     }
 
+    /**
+     * @param Vector|null $case
+     * @return Vector
+     */
     private static function need(?array $case): array
     {
         if ($case === null) {
@@ -47,16 +54,26 @@ final class ContractVectorsTest extends TestCase
         return $case;
     }
 
+    /** @return array<string, array{Vector|null}> */
     public static function acknowledgement(): array { return self::vectors('acknowledgement'); }
+    /** @return array<string, array{Vector|null}> */
     public static function normalise(): array { return self::vectors('normalise'); }
+    /** @return array<string, array{Vector|null}> */
     public static function header(): array { return self::vectors('header'); }
+    /** @return array<string, array{Vector|null}> */
     public static function purgeTags(): array { return self::vectors('purge_tags'); }
+    /** @return array<string, array{Vector|null}> */
     public static function instances(): array { return self::vectors('instances'); }
+    /** @return array<string, array{Vector|null}> */
     public static function settings(): array { return self::vectors('settings'); }
+    /** @return array<string, array{Vector|null}> */
     public static function networkGuard(): array { return self::vectors('network_guard'); }
+    /** @return array<string, array{Vector|null}> */
     public static function backoff(): array { return self::vectors('backoff'); }
+    /** @return array<string, array{Vector|null}> */
     public static function pack(): array { return self::vectors('pack'); }
 
+    /** @param Vector|null $case */
     #[DataProvider('acknowledgement')]
     public function testAcknowledgement(?array $case): void
     {
@@ -64,6 +81,7 @@ final class ContractVectorsTest extends TestCase
         self::assertSame($c['failure'], Acknowledgement::purgeFailure($c['status'], $c['body']));
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('normalise')]
     public function testNormalise(?array $case): void
     {
@@ -71,12 +89,16 @@ final class ContractVectorsTest extends TestCase
         self::assertSame($c['out'], TagSet::normalise($c['prefix'], $c['tag']));
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('header')]
     public function testHeader(?array $case): void
     {
         $c = self::need($case);
+        if (isset($c['generate'])) {
+            self::assertIsInt($c['generate']['count']);
+        }
         $tags = isset($c['generate'])
-            ? array_map(static fn (int $i): string => str_replace('{i}', (string) $i, $c['generate']['pattern']), range(0, $c['generate']['count'] - 1))
+            ? array_map(static fn (int|float $i): string => str_replace('{i}', (string) $i, $c['generate']['pattern']), range(0, $c['generate']['count'] - 1))
             : $c['tags'];
         $value = (new TagPolicy($c['prefix'], $c['families'], $c['identity_prefixes']))->headerValue($tags);
         if (isset($c['out'])) {
@@ -88,6 +110,7 @@ final class ContractVectorsTest extends TestCase
         }
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('purgeTags')]
     public function testPurgeTags(?array $case): void
     {
@@ -95,6 +118,7 @@ final class ContractVectorsTest extends TestCase
         self::assertSame($c['out'], (new TagPolicy($c['prefix'], $c['families']))->purgeTags($c['tags']));
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('instances')]
     public function testInstances(?array $case): void
     {
@@ -106,6 +130,7 @@ final class ContractVectorsTest extends TestCase
         self::assertCount($c['errors'], $errors, implode(' | ', $errors));
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('settings')]
     public function testSettings(?array $case): void
     {
@@ -119,6 +144,7 @@ final class ContractVectorsTest extends TestCase
         self::assertSame($c['debug'], $s->debugHeaders);
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('networkGuard')]
     public function testNetworkGuard(?array $case): void
     {
@@ -135,6 +161,7 @@ final class ContractVectorsTest extends TestCase
         self::assertSame($c['address'], $address);
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('backoff')]
     public function testBackoff(?array $case): void
     {
@@ -142,12 +169,14 @@ final class ContractVectorsTest extends TestCase
         self::assertSame($delay, Backoff::delay($failures));
     }
 
+    /** @param Vector|null $case */
     #[DataProvider('pack')]
     public function testPack(?array $case): void
     {
         $c = self::need($case);
         $entries = [];
         foreach ($c['entry_tag_counts'] as $i => $n) {
+            self::assertIsInt($n);
             $entries[] = new OutboxEntry($i + 1, 'e', array_map(static fn (int $j): string => "t{$i}_{$j}", range(0, $n - 1)), 0);
         }
         self::assertSame($c['request_tag_counts'], array_map(static fn (array $r): int => count($r['tags']), Packer::pack($entries)));

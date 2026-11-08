@@ -178,6 +178,8 @@ final class NetworkGuardTest extends TestCase
         };
         $client = (new TransportFactory(5.0, 2.0, new NetworkGuard(static fn (): array => ['10.0.0.5']), \Closure::fromCallable($handler), true, 'http://proxy.internal:3128'))->client();
         $client->sendRequest(new Request('GET', 'http://trident:9301/admin/status'));
+        self::assertIsArray($seen);
+        self::assertArrayHasKey('proxy', $seen);
         self::assertSame('http://proxy.internal:3128', $seen['proxy']);
         self::assertArrayNotHasKey(\CURLOPT_RESOLVE, $seen['curl'] ?? []);
         self::assertArrayNotHasKey(\CURLOPT_NOPROXY, $seen['curl'] ?? []);
@@ -196,4 +198,78 @@ final class NetworkGuardTest extends TestCase
         $this->expectException(\Psr\Http\Client\ClientExceptionInterface::class);
         $client->sendRequest(new Request('GET', 'http://169.254.169.254/'));
     }
+    public function testNumericIpv4DomainBoundariesNeverCollapseAValidAddress(): void
+    {
+        self::assertSame('0.0.0.0', NetworkGuard::numericV4('0'));
+        self::assertSame('0.0.0.0', NetworkGuard::numericV4('0.0.0.0'));
+        self::assertSame('255.255.255.255', NetworkGuard::numericV4('4294967295'));
+        self::assertSame('255.255.255.255', NetworkGuard::numericV4('0xffffffff'));
+        self::assertSame('255.255.255.255', NetworkGuard::numericV4('255.255.255.255'));
+        self::assertNull(NetworkGuard::numericV4('4294967296'));
+        self::assertNull(NetworkGuard::numericV4('256.0.0.1'));
+    }
+
+    public function testExpiredResolutionBudgetNeverReachesTheHandler(): void
+    {
+        $sent = 0;
+        $guard = new NetworkGuard(static function (string $host): array {
+            usleep(30000);
+            return ['127.0.0.1'];
+        });
+        $handler = static function () use (&$sent) {
+            ++$sent;
+            return Create::promiseFor(new Response(200));
+        };
+        $client = (new TransportFactory(0.01, 1.0, $guard, \Closure::fromCallable($handler), true))->guzzle();
+        try {
+            $client->request('GET', 'http://budget.test/admin/status');
+            self::fail('An exhausted deadline reached HTTP');
+        } catch (\GuzzleHttp\Exception\ConnectException $e) {
+            self::assertStringContainsString('deadline', $e->getMessage());
+        }
+        self::assertSame(0, $sent);
+    }
+
+    public function testResolutionDebitsBothFiniteBudgetsAndPreservesUnlimitedBudgets(): void
+    {
+        $guard = new NetworkGuard(static function (string $host): array {
+            usleep(20000);
+            return ['127.0.0.1'];
+        });
+        $seen = [];
+        $handler = static function (RequestInterface $request, array $options) use (&$seen) {
+            $seen[] = $options;
+            return Create::promiseFor(new Response(200));
+        };
+        $client = (new TransportFactory(1.0, 0.5, $guard, \Closure::fromCallable($handler), true))->guzzle();
+        $client->request('GET', 'http://budget.test/admin/status');
+        self::assertGreaterThan(0.0, $seen[0]['timeout']);
+        self::assertLessThan(0.99, $seen[0]['timeout']);
+        self::assertGreaterThan(0.0, $seen[0]['connect_timeout']);
+        self::assertLessThan(0.49, $seen[0]['connect_timeout']);
+        self::assertEqualsWithDelta(0.5, $seen[0]['timeout'] - $seen[0]['connect_timeout'], 0.001);
+        $client->request('GET', 'http://budget.test/admin/status', ['timeout' => 0, 'connect_timeout' => 0]);
+        self::assertSame(0, $seen[1]['timeout']);
+        self::assertSame(0, $seen[1]['connect_timeout']);
+    }
+
+    public function testInvalidOrSubMillisecondBudgetNeverBecomesUnlimited(): void
+    {
+        $sent = 0;
+        $handler = static function () use (&$sent) {
+            ++$sent;
+            return Create::promiseFor(new Response(200));
+        };
+        $client = (new TransportFactory(1.0, 0.5, new NetworkGuard(static fn (): array => ['127.0.0.1']), \Closure::fromCallable($handler), true))->guzzle();
+        foreach ([-1, INF, NAN, 'invalid', 0.0001] as $budget) {
+            try {
+                $client->request('GET', 'http://budget.test/admin/status', ['timeout' => $budget]);
+                self::fail('An invalid or truncated timeout reached HTTP');
+            } catch (\GuzzleHttp\Exception\ConnectException $e) {
+                self::assertStringContainsString('deadline', $e->getMessage());
+            }
+        }
+        self::assertSame(0, $sent);
+    }
+
 }

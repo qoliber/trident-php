@@ -74,7 +74,7 @@ class ReadyResponseTest extends TestCase
     public function testConstructorPropertiesAreReadonly(): void
     {
         $backends = [
-            'default' => ['healthy' => true, 'name' => 'default'],
+            'default' => 'healthy',
         ];
 
         $response = new ReadyResponse(

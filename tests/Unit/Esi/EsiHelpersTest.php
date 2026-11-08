@@ -40,6 +40,8 @@ final class EsiHelpersTest extends TestCase
         Markup::assertSafeSrc($src);
         parse_str((string) parse_url($src, PHP_URL_QUERY), $q);
         self::assertSame('menu', $q['trident-esi']);
+        self::assertIsString($q['a']);
+        self::assertIsString($q['s']);
         self::assertSame(['depth' => 0, 'location' => 'primary'], $urls->verify('menu', $q['a'], $q['s']));
         self::assertNull($urls->verify('widgets', $q['a'], $q['s']), 'signature binds the type');
         self::assertNull($urls->verify('menu', FragmentUrl::encode(['location' => 'x']), $q['s']));

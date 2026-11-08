@@ -19,29 +19,21 @@ final class NetworkGuard
     public const FORBIDDEN_NAMES = ['metadata.google.internal', 'metadata'];
 
     private readonly \Closure $resolve;
+    private readonly bool $native;
 
     /**
      * @param (callable(string): list<string>)|null $resolve host => addresses (tests pass a fake)
      */
     public function __construct(?callable $resolve = null)
     {
-        $this->resolve = $resolve !== null ? \Closure::fromCallable($resolve) : static function (string $host): array {
-            $v4 = gethostbynamel($host) ?: [];
-            $v6 = [];
-            foreach (@dns_get_record($host, DNS_AAAA) ?: [] as $record) {
-                if (isset($record['ipv6'])) {
-                    $v6[] = (string) $record['ipv6'];
-                }
-            }
-
-            return array_values(array_merge($v4, $v6));
-        };
+        $this->native = $resolve === null;
+        $this->resolve = $resolve !== null ? \Closure::fromCallable($resolve) : NativeResolver::lookup(...);
     }
 
     /**
      * The address to connect to, or an exception saying why not.
      */
-    public function address(string $host): string
+    public function address(string $host, ?float $deadline = null): string
     {
         $host = strtolower(trim($host, '[]'));
         if (in_array(rtrim($host, '.'), self::FORBIDDEN_NAMES, true)) {
@@ -50,7 +42,8 @@ final class NetworkGuard
         // Numeric hosts in any spelling libc accepts (2852039166, 0251.0376.0251.0376,
         // 0xa9fea9fe) are addresses, not names: never hand them to the resolver.
         $numeric = self::numericV4($host);
-        $addresses = @inet_pton($host) !== false ? [$host] : ($numeric !== null ? [$numeric] : ($this->resolve)($host));
+        $addresses = @inet_pton($host) !== false ? [$host] : ($numeric !== null ? [$numeric] : ($this->native && $deadline !== null
+            ? (new NativeResolver())->resolve($host, $deadline) : ($this->resolve)($host)));
         if ($addresses === []) {
             throw new \RuntimeException(sprintf('%s does not resolve', $host));
         }
@@ -100,7 +93,7 @@ final class NetworkGuard
             $value |= $p << (24 - 8 * $i);
         }
 
-        return long2ip($value);
+        return long2ip($value) ?: null;
     }
 
     public static function forbidden(string $address): bool

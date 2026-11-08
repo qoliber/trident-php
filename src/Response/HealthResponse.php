@@ -15,6 +15,7 @@ class HealthResponse
 {
     use CarriesRaw;
 
+    /** @param array<string, mixed>|null $backends */
     public function __construct(
         public readonly bool $healthy,
         public readonly string $status,

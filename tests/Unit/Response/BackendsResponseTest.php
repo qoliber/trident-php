@@ -203,7 +203,7 @@ class BackendsResponseTest extends TestCase
 
     public function testConstructorPropertiesAreReadonly(): void
     {
-        $backends = [['name' => 'test', 'healthy' => true]];
+        $backends = [['name' => 'test', 'host' => '127.0.0.1', 'port' => 8080, 'status' => 'healthy', 'healthy' => true, 'total_requests' => 0, 'total_errors' => 0, 'active_connections' => 0, 'avg_response_ms' => 0.0]];
 
         $response = new BackendsResponse(
             total: 1,

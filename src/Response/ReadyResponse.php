@@ -50,6 +50,7 @@ class ReadyResponse
         return ($this->backends[$name] ?? '') === 'healthy';
     }
 
+    /** @return list<string> */
     public function getUnhealthyBackends(): array
     {
         return array_keys(array_filter($this->backends, fn($status) => $status !== 'healthy'));

@@ -242,7 +242,52 @@ class AdminService
 
                 return $on(static fn (TridentClient $c) => $c->warmerQueue($urls));
             })(),
-            'launch_start' => (static fn (array $options) => $on(static fn (TridentClient $c) => $c->launchStart($options)))(array_filter(['reason' => $opt('reason')])),
+            'launch_start' => (function () use ($on, $body, $hosts): array {
+                /** @var array{urls: list<string>, maintenance?: array{title?: string, message?: string, status_code?: int, retry_after?: int}, auto_complete?: bool, bypass_ips?: list<string>, bypass_paths?: list<string>} $options */
+                $options = ['urls' => $this->ownUrls($body['urls'] ?? [], $hosts, true)];
+                if (array_key_exists('auto_complete', $body)) {
+                    if (!is_bool($body['auto_complete'])) {
+                        throw new AdminException('auto_complete must be a boolean');
+                    }
+                    $options['auto_complete'] = $body['auto_complete'];
+                }
+
+                if (array_key_exists('maintenance', $body)) {
+                    $maintenance = $body['maintenance'];
+                    if (!is_array($maintenance)) {
+                        throw new AdminException('maintenance must be an object');
+                    }
+                    foreach ($maintenance as $field => $value) {
+                        $valid = match ($field) {
+                            'title', 'message' => is_string($value),
+                            'status_code', 'retry_after' => is_int($value),
+                            default => false,
+                        };
+                        if (!$valid) {
+                            throw new AdminException('Invalid maintenance field: ' . $field);
+                        }
+                    }
+                    /** @var array{title?: string, message?: string, status_code?: int, retry_after?: int} $maintenance */
+                    $options['maintenance'] = $maintenance;
+                }
+                foreach (['bypass_ips', 'bypass_paths'] as $field) {
+                    if (!array_key_exists($field, $body)) {
+                        continue;
+                    }
+                    $values = $body[$field];
+                    if (!is_array($values) || !array_is_list($values)) {
+                        throw new AdminException($field . ' must be a list of strings');
+                    }
+                    foreach ($values as $value) {
+                        if (!is_string($value)) {
+                            throw new AdminException($field . ' must be a list of strings');
+                        }
+                    }
+                    $options[$field] = $values;
+                }
+
+                return $on(static fn (TridentClient $c) => $c->launchStart($options));
+            })(),
             'launch_complete' => $on(static fn (TridentClient $c) => $c->launchComplete()),
             'launch_abort' => (static fn (?string $reason) => $on(static fn (TridentClient $c) => $c->launchAbort(null, $reason)))($opt('reason')),
             'reflect_enable' => (static fn (?string $level, ?string $duration, ?string $reason) => $on(static fn (TridentClient $c) => $c->reflectEnable($level, $duration, $reason)))(

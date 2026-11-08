@@ -73,7 +73,7 @@ class CacheTagMiddleware implements MiddlewareInterface
      */
     public static function getTags(ServerRequestInterface $request): TagCollection
     {
-        /** @var TagCollection $tags */
+        /** @var TagCollection|null $tags */
         $tags = $request->getAttribute(self::ATTRIBUTE_NAME);
 
         return $tags ?? new TagCollection();

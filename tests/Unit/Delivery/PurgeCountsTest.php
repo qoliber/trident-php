@@ -91,6 +91,9 @@ final class PurgeCountsTest extends TestCase
 
         self::assertSame(2, $report->delivered);
         self::assertSame(3, $report->purged, 'the deferred purge counts as delivered, not as purged');
+        if (!isset($report->instances['edge-1']['purged'], $report->instances['edge-2']['purged'])) {
+            self::fail('Every successful instance must report its physical purge count');
+        }
         self::assertSame(3, $report->instances['edge-1']['purged']);
         self::assertSame(0, $report->instances['edge-2']['purged']);
     }

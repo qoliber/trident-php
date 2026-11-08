@@ -29,7 +29,7 @@ final class PolicyTest extends TestCase
     }
 
     /**
-     * @return array<string, array{RequestContext, string}>
+     * @return array<array-key, array{RequestContext, string}>
      */
     public static function neverStored(): array
     {

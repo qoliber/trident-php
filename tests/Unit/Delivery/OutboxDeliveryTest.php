@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Qoliber\Trident\Tests\Unit\Delivery;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Qoliber\Trident\Config\Settings;
 use Qoliber\Trident\Config\SettingsResolver;
 use Qoliber\Trident\Delivery\Instance;
@@ -57,6 +58,105 @@ final class OutboxDeliveryTest extends TestCase
         $http->answer('edge', 200);
         self::assertSame(1, $delivery->drain(50, true)->delivered);
         self::assertSame(0, $delivery->status()['pending']);
+    }
+
+    /** @return iterable<string, array{int, string, ?string, string}> */
+    public static function transientFailures(): iterable
+    {
+        yield 'rate limited' => [429, '{"error":"slow down"}', null, 'HTTP 429'];
+        yield 'unavailable' => [503, '{"error":"unavailable"}', null, 'HTTP 503'];
+        yield 'response timeout' => [0, '', 'owned response timeout', 'no response'];
+    }
+
+    #[DataProvider('transientFailures')]
+    public function testTransientFailureRetainsMetadataAndRetriesOnlyWhenDue(
+        int $status,
+        string $body,
+        ?string $error,
+        string $reason
+    ): void {
+        $now = self::NOW;
+        $store = new InMemoryOutboxStore();
+        $http = (new FakeTransport())->answer('edge', $status, $body, $error);
+        $delivery = new OutboxDelivery($store, self::settings(), new TagPolicy(), $http, null,
+            static function () use (&$now): int { return $now; }, null, 0);
+
+        self::assertSame(1, $delivery->recordTags(['p_1']));
+        $report = $delivery->flush();
+        self::assertSame(0, $report->delivered);
+        self::assertSame(1, $report->failed);
+        self::assertCount(1, $store->rows);
+        $row = array_values($store->rows)[0];
+        self::assertSame('edge', $row['instance']);
+        self::assertSame(1, $row['attempts']);
+        self::assertSame($now, $row['last_error_at']);
+        self::assertSame($now + 1, $row['next_attempt_at']);
+        self::assertStringContainsString($reason, (string) $row['last_error']);
+        self::assertContains('p_1', $row['tags']);
+
+        self::assertSame(0, $delivery->drain()->delivered);
+        self::assertCount(1, $http->requests, 'no early retry before the real backoff');
+        ++$now;
+        $http->answer('edge', 200);
+        self::assertSame(1, $delivery->drain()->delivered);
+        self::assertSame([], $store->rows);
+        self::assertCount(2, $http->requests);
+    }
+
+    public function testOneNodesAcknowledgementCannotDeleteAnotherNodesPendingWork(): void
+    {
+        $now = self::NOW;
+        $settings = SettingsResolver::resolve(['TRIDENT_INSTANCES' =>
+            '{"edge-1":{"api_url":"http://edge1:9301","api_token":"t"},"edge-2":{"api_url":"http://edge2:9301","api_token":"t"}}'], []);
+        $store = new InMemoryOutboxStore();
+        $http = (new FakeTransport())->answer('edge1', 200)->answer('edge2', 503, '{"error":"unavailable"}');
+        $clock = static function () use (&$now): int { return $now; };
+        $writer = new OutboxDelivery($store, $settings, new TagPolicy(), $http, null, $clock, null, 0);
+        self::assertSame(2, $writer->recordTags(['p_1']));
+        $report = $writer->flush();
+        self::assertSame(1, $report->delivered);
+        self::assertSame(1, $report->failed);
+        self::assertCount(1, $store->rows);
+        self::assertSame('edge-2', array_values($store->rows)[0]['instance']);
+
+        ++$now;
+        $http->answer('edge2', 200);
+        $nextProcess = new OutboxDelivery($store, $settings, new TagPolicy(), $http, null, $clock, null, 0);
+        self::assertSame(1, $nextProcess->drain()->delivered);
+        self::assertSame([], $store->rows);
+        self::assertCount(1, $http->purgedTags('edge1'), 'already acknowledged node is not replayed');
+        self::assertCount(2, $http->purgedTags('edge2'), 'only the failed node is retried');
+    }
+
+    public function testDeathAfterAcknowledgementBeforeRemoveLeavesIdempotentReplay(): void
+    {
+        $store = new class extends InMemoryOutboxStore {
+            public bool $dieBeforeRemove = true;
+            public function remove(array $ids): void
+            {
+                if ($this->dieBeforeRemove) {
+                    throw new \RuntimeException('owned worker death after acknowledgement before deletion');
+                }
+                parent::remove($ids);
+            }
+        };
+        $http = (new FakeTransport())->answer('edge', 200);
+        $writer = new OutboxDelivery($store, self::settings(), new TagPolicy(), $http, null,
+            static fn (): int => self::NOW, null, 0);
+        $writer->recordTags(['p_1']);
+        $writer->flush();
+        self::assertCount(1, $store->rows, 'acknowledged intent remains durable before deletion');
+        self::assertCount(1, $http->purgedTags('edge'));
+        $ids = array_keys($store->rows);
+
+        $store->dieBeforeRemove = false;
+        $nextProcess = new OutboxDelivery($store, self::settings(), new TagPolicy(), $http, null,
+            static fn (): int => self::NOW + 120, null, 0);
+        self::assertSame($ids, array_keys($store->rows), 'a new process cannot drop work while reconstructing');
+        self::assertSame(1, $nextProcess->drain()->delivered);
+        self::assertSame([], $store->rows);
+        self::assertCount(2, $http->purgedTags('edge'));
+        self::assertSame($http->purgedTags('edge')[0], $http->purgedTags('edge')[1], 'duplicate delivery preserves the tags');
     }
 
     public function testWhenTheOutboxCannotBeWrittenThePurgeIsSentDirectly(): void

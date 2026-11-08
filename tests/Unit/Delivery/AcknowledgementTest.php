@@ -11,7 +11,7 @@ use Qoliber\Trident\Delivery\Acknowledgement;
 final class AcknowledgementTest extends TestCase
 {
     /**
-     * @return array<string, array{int, string}>
+     * @return array<array-key, array{int, string}>
      */
     public static function acks(): array
     {
@@ -31,7 +31,7 @@ final class AcknowledgementTest extends TestCase
     }
 
     /**
-     * @return array<string, array{int, string, string}>
+     * @return array<array-key, array{int, string, string}>
      */
     public static function failures(): array
     {
@@ -68,7 +68,7 @@ final class AcknowledgementTest extends TestCase
     }
 
     /**
-     * @return array<string, array{int, string}>
+     * @return array<array-key, array{int, string}>
      */
     public static function notReflectAcks(): array
     {

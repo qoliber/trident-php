@@ -169,9 +169,20 @@ class TridentManager
         return $this->client->bans($limit);
     }
 
+    /**
+     * The legacy second argument names an engine ban type. The engine has no
+     * per-ban TTL; duration strings are refused before sending any request.
+     * Null retains the existing URL-ban default. The parameter name stays for
+     * compatibility with callers using named arguments.
+     */
     public function createBan(string $pattern, ?string $ttl = null): BanCreateResponse
     {
-        return $this->client->createBan($pattern, $ttl);
+        $type = $ttl ?? 'url';
+        if (!in_array($type, ['url', 'tag', 'pattern', 'bulkurl', 'tags'], true)) {
+            throw new \InvalidArgumentException('Ban TTL is unsupported; the second argument must be an existing ban type');
+        }
+
+        return $this->client->createBan($pattern, $type);
     }
 
     public function deleteBan(string $id): bool
@@ -363,7 +374,11 @@ class TridentManager
     /**
      * Start launch mode with URL warming
      *
-     * @param array{name?: string, urls?: array<string>, sitemap_url?: string, maintenance?: array{title?: string, message?: string}, options?: array{timeout?: string, auto_complete?: bool, concurrency?: int}} $options
+     * Options use the singleton API's top-level fields. Named launches,
+     * sitemap_url and nested options are unsupported. Omitted controls use
+     * server defaults; explicit false is preserved.
+     *
+     * @param array{urls: list<string>, maintenance?: array{title?: string, message?: string, status_code?: int, retry_after?: int}, auto_complete?: bool, bypass_ips?: list<string>, bypass_paths?: list<string>} $options
      */
     public function launchStart(array $options): LaunchResponse
     {
@@ -372,24 +387,33 @@ class TridentManager
 
     /**
      * Get launch status
+     *
+     * @param string|null $launchId Ignored: the engine runs one global launch.
+     *                              Kept for compatibility with existing callers.
      */
-    public function launchStatus(string $launchId): LaunchStatusResponse
+    public function launchStatus(?string $launchId = null): LaunchStatusResponse
     {
         return $this->client->launchStatus($launchId);
     }
 
     /**
      * Complete launch (go live)
+     *
+     * @param string|null $launchId Ignored: the engine runs one global launch.
+     *                              Kept for compatibility with existing callers.
      */
-    public function launchComplete(string $launchId): LaunchResponse
+    public function launchComplete(?string $launchId = null): LaunchResponse
     {
         return $this->client->launchComplete($launchId);
     }
 
     /**
      * Abort launch
+     *
+     * @param string|null $launchId Ignored: the engine runs one global launch.
+     *                              Kept for compatibility with existing callers.
      */
-    public function launchAbort(string $launchId, ?string $reason = null): LaunchResponse
+    public function launchAbort(?string $launchId = null, ?string $reason = null): LaunchResponse
     {
         return $this->client->launchAbort($launchId, $reason);
     }

@@ -838,13 +838,29 @@ class TridentManagerTest extends TestCase
 
         $this->client->expects($this->once())
             ->method('createBan')
-            ->with('^/admin/.*', '1h')
+            ->with('^/admin/.*', 'pattern')
             ->willReturn($banResponse);
 
-        $response = $this->manager->createBan('^/admin/.*', '1h');
+        $response = $this->manager->createBan('^/admin/.*', 'pattern');
 
         $this->assertTrue($response->isSuccess());
         $this->assertEquals('ban-123', $response->id);
+    }
+
+    public function testCreateBanWithOmittedLegacyArgumentUsesUrlType(): void
+    {
+        $response = BanCreateResponse::fromArray(['success' => true, 'id' => 'ban-url', 'pattern' => 'https://shop.example/a']);
+        $this->client->expects($this->once())->method('createBan')
+            ->with('https://shop.example/a', 'url')->willReturn($response);
+        self::assertSame($response, $this->manager->createBan('https://shop.example/a'));
+    }
+
+    public function testCreateBanRejectsUnsupportedLegacyTtlBeforeSendingIt(): void
+    {
+        $this->client->expects($this->never())->method('createBan');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Ban TTL is unsupported');
+        $this->manager->createBan('https://shop.example/a', '1h');
     }
 
     public function testDeleteBan(): void
@@ -909,8 +925,8 @@ class TridentManagerTest extends TestCase
         ]);
 
         $options = [
-            'name' => 'v2.0 Release',
-            'sitemap_url' => 'https://example.com/sitemap.xml',
+            'urls' => ['/products/1'],
+            'auto_complete' => false,
         ];
 
         $this->client->expects($this->once())
@@ -923,6 +939,72 @@ class TridentManagerTest extends TestCase
         $this->assertTrue($response->isSuccess());
         $this->assertEquals('launch-123', $response->launchId);
         $this->assertTrue($response->isWarming());
+    }
+
+    public function testLaunchStatusWithoutIdentity(): void
+    {
+        $native = LaunchStatusResponse::fromArray(['active' => true, 'state' => 'warming']);
+        $this->client->expects($this->once())
+            ->method('launchStatus')
+            ->with(null)
+            ->willReturn($native);
+
+        $this->assertSame($native, $this->manager->launchStatus());
+    }
+
+    public function testLaunchStatusWithNullIdentity(): void
+    {
+        $native = LaunchStatusResponse::fromArray(['active' => true, 'state' => 'warming']);
+        $this->client->expects($this->once())
+            ->method('launchStatus')
+            ->with(null)
+            ->willReturn($native);
+
+        $this->assertSame($native, $this->manager->launchStatus(null));
+    }
+
+    public function testLaunchCompleteWithoutIdentity(): void
+    {
+        $native = LaunchResponse::fromArray(['success' => true, 'message' => 'Launch mode completed']);
+        $this->client->expects($this->once())
+            ->method('launchComplete')
+            ->with(null)
+            ->willReturn($native);
+
+        $this->assertSame($native, $this->manager->launchComplete());
+    }
+
+    public function testLaunchCompleteWithNullIdentity(): void
+    {
+        $native = LaunchResponse::fromArray(['success' => true, 'message' => 'Launch mode completed']);
+        $this->client->expects($this->once())
+            ->method('launchComplete')
+            ->with(null)
+            ->willReturn($native);
+
+        $this->assertSame($native, $this->manager->launchComplete(null));
+    }
+
+    public function testLaunchAbortWithoutIdentity(): void
+    {
+        $native = LaunchResponse::fromArray(['success' => true, 'message' => 'Launch mode aborted']);
+        $this->client->expects($this->once())
+            ->method('launchAbort')
+            ->with(null, null)
+            ->willReturn($native);
+
+        $this->assertSame($native, $this->manager->launchAbort());
+    }
+
+    public function testLaunchAbortWithNullIdentity(): void
+    {
+        $native = LaunchResponse::fromArray(['success' => true, 'message' => 'Launch mode aborted']);
+        $this->client->expects($this->once())
+            ->method('launchAbort')
+            ->with(null, 'Singleton facade cleanup')
+            ->willReturn($native);
+
+        $this->assertSame($native, $this->manager->launchAbort(null, 'Singleton facade cleanup'));
     }
 
     public function testLaunchStatus(): void

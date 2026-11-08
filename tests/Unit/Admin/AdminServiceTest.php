@@ -31,13 +31,19 @@ final class AdminServiceTest extends TestCase
         $this->outbox = new FakeOutbox();
     }
 
+    /** @return list<array{string, string, mixed}> */
+    private function requests(): array
+    {
+        return $this->sent;
+    }
+
     private function service(?ShopAdapter $shop = null): AdminService
     {
         $handler = function (RequestInterface $r) {
             $this->sent[] = [$r->getMethod(), $r->getUri()->getPath(), json_decode((string) $r->getBody(), true)];
 
             return Create::promiseFor(new Response(200, ['Content-Type' => 'application/json'], match ($r->getUri()->getPath()) {
-                '/admin/status' => json_encode(['version' => $this->engineVersion, 'mode' => 'licensed', 'license' => 'valid']),
+                '/admin/status' => json_encode(['version' => $this->engineVersion, 'mode' => 'licensed', 'license' => 'valid'], JSON_THROW_ON_ERROR),
                 '/admin/bans' => '{"success":true,"id":1,"pattern":"x"}',
                 default => '{"total_purged":0,"purged":0,"mode":"soft"}',
             }));
@@ -99,14 +105,14 @@ final class AdminServiceTest extends TestCase
     public function testAPatternPurgeIsScopedToTheShopsHosts(): void
     {
         $this->service()->action('purge_pattern', ['pattern' => '^/sale/', 'confirm' => true]);
-        $purge = array_values(array_filter($this->sent, static fn ($s) => $s[1] === '/admin/purge/pattern'))[0];
+        $purge = array_values(array_filter($this->requests(), static fn ($s) => $s[1] === '/admin/purge/pattern'))[0];
         self::assertSame('^[A-Z]+:[a-z]+:(?:shop\.example|shop\.example:8443):/sale/', $purge[2]['pattern']);
     }
 
     public function testAWarmerRunWarmsTheShopsOwnSitemapsOnly(): void
     {
         $this->service()->action('warmer_run', ['sitemaps' => "https://shop.example/sitemap.xml.gz\n/de/sitemap.xml\n"]);
-        $run = array_values(array_filter($this->sent, static fn ($s) => $s[1] === '/admin/warmer/run'))[0];
+        $run = array_values(array_filter($this->requests(), static fn ($s) => $s[1] === '/admin/warmer/run'))[0];
         self::assertSame(['https://shop.example/sitemap.xml.gz', 'https://shop.example/de/sitemap.xml'], $run[2]['sitemaps'], 'relative paths resolve on the shop');
 
         $this->sent = [];
@@ -116,10 +122,11 @@ final class AdminServiceTest extends TestCase
         } catch (AdminException $e) {
             self::assertStringContainsString('not on this shop', $e->getMessage());
         }
-        self::assertSame([], array_filter($this->sent, static fn ($s) => $s[1] === '/admin/warmer/run'), 'nothing sent for a foreign sitemap');
+        $refused = array_filter($this->requests(), static fn ($s) => $s[1] === '/admin/warmer/run');
+        self::assertCount(0, $refused, 'nothing sent for a foreign sitemap');
 
         $this->service()->action('warmer_run', []);
-        $run = array_values(array_filter($this->sent, static fn ($s) => $s[1] === '/admin/warmer/run'))[0];
+        $run = array_values(array_filter($this->requests(), static fn ($s) => $s[1] === '/admin/warmer/run'))[0];
         self::assertNull($run[2], 'no sitemaps: the configured sources, no body');
     }
 
@@ -138,11 +145,91 @@ final class AdminServiceTest extends TestCase
     {
         $this->service()->action('ban_create', ['pattern' => '/sale/1', 'type' => 'url', 'confirm' => true]);
         $this->service()->action('ban_create', ['pattern' => '^/sale/', 'type' => 'pattern', 'confirm' => true]);
-        $bans = array_values(array_filter($this->sent, static fn ($s) => $s[1] === '/admin/bans'));
+        $bans = array_values(array_filter($this->requests(), static fn ($s) => $s[1] === '/admin/bans'));
         self::assertSame('https://shop.example/sale/1', $bans[0][2]['pattern']);
         self::assertStringStartsWith('^[A-Z]+:[a-z]+:(?:shop\.example', $bans[1][2]['pattern']);
         $this->expectException(AdminException::class);
         $this->service()->action('ban_create', ['pattern' => 'http://evil.example/x', 'type' => 'url', 'confirm' => true]);
+    }
+
+
+    public function testLaunchStartForwardsOwnedUrlsAndExplicitFalse(): void
+    {
+        $this->service()->action('launch_start', [
+            'urls' => ['/products/42', 'https://shop.example/cart'],
+            'auto_complete' => false,
+            'confirm' => true,
+        ]);
+        $sent = array_values(array_filter($this->requests(), static fn ($s) => $s[1] === '/admin/launch/start'));
+        self::assertCount(1, $sent);
+        self::assertSame([
+            'urls' => ['https://shop.example/products/42', 'https://shop.example/cart'],
+            'auto_complete' => false,
+        ], $sent[0][2]);
+    }
+
+    public function testLaunchStartPreservesAllExistingEngineControls(): void
+    {
+        $options = [
+            'urls' => ['https://shop.example/a'],
+            'maintenance' => ['title' => 'Upgrade', 'message' => 'Please wait', 'status_code' => 503, 'retry_after' => 60],
+            'auto_complete' => false,
+            'bypass_ips' => ['127.0.0.1'],
+            'bypass_paths' => ['/status'],
+        ];
+        $this->service()->action('launch_start', $options + ['confirm' => true]);
+        $sent = array_values(array_filter($this->requests(), static fn ($r) => $r[1] === '/admin/launch/start'));
+        self::assertCount(1, $sent);
+        self::assertEquals($options, $sent[0][2]);
+    }
+
+    public function testLaunchStartOmitsUnspecifiedPolicyAndUnsupportedReason(): void
+    {
+        $this->service()->action('launch_start', ['urls' => ['/a'], 'reason' => 'upgrade', 'confirm' => true]);
+        $sent = array_values(array_filter($this->requests(), static fn ($r) => $r[1] === '/admin/launch/start'));
+        self::assertCount(1, $sent);
+        self::assertSame(['urls' => ['https://shop.example/a']], $sent[0][2]);
+    }
+
+    public function testLaunchStartRejectsInvalidControlsBeforeAnyRequest(): void
+    {
+        $cases = [
+            ['auto_complete' => null], ['auto_complete' => 'false'],
+            ['maintenance' => 'title'], ['maintenance' => ['title' => 42]],
+            ['maintenance' => ['unknown' => 'field']], ['maintenance' => ['retry_after' => '60']],
+            ['bypass_ips' => '127.0.0.1'], ['bypass_paths' => [null]],
+        ];
+        foreach ($cases as $case) {
+            try {
+                $this->service()->action('launch_start', $case + ['urls' => ['/a'], 'confirm' => true]);
+                self::fail('Invalid control accepted: ' . json_encode($case, JSON_THROW_ON_ERROR));
+            } catch (AdminException $e) {
+                self::assertNotSame('', $e->getMessage());
+            }
+            self::assertSame([], $this->requests());
+        }
+    }
+
+    public function testLaunchStartRefusesMissingUrlsBeforeCallingAnyNode(): void
+    {
+        try {
+            $this->service()->action('launch_start', ['confirm' => true]);
+            self::fail('missing urls accepted');
+        } catch (AdminException $e) {
+            self::assertSame('urls is required', $e->getMessage());
+        }
+        self::assertSame([], $this->sent);
+    }
+
+    public function testLaunchStartRefusesAnotherShopsUrlsBeforeCallingAnyNode(): void
+    {
+        try {
+            $this->service()->action('launch_start', ['urls' => ['https://other-shop.example/a'], 'confirm' => true]);
+            self::fail('foreign urls accepted');
+        } catch (AdminException $e) {
+            self::assertStringContainsString('not on this shop', $e->getMessage());
+        }
+        self::assertSame([], $this->sent);
     }
 
     public function testDestructiveActionsNeedConfirmation(): void

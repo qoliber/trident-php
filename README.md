@@ -310,6 +310,18 @@ every class that implements it. Type against `TridentClient` to use them.
 | a purge with every engine option | `TridentClient::purge(PurgeRequest …)` |
 | an endpoint the client has no method for yet | `Admin\Api::call()` — the one request path the client itself uses |
 
+## 1.8.2 (unreleased) — Launch request correctness
+
+Launch start keeps the submitted owned URLs and an explicit `auto_complete:
+false` through the admin service, manager and HTTP request. The shared admin
+service rejects invalid or missing owned URLs before engine transport. The
+current integrations require
+`~1.8.2`, which excludes older SDKs that discard those options and excludes
+another Trident minor line. Version 1.8.2 is the next package patch candidate;
+this source tree and its local `1.8.99` development aliases do not publish it.
+The corrected SDK must be published before these integration requirements can
+be resolved from the public registry.
+
 ## 1.8.1 — which Trident this is for
 
 Packages are versioned in lockstep with the engine: MAJOR.MINOR is Trident's
@@ -320,7 +332,7 @@ when a connected engine runs another MAJOR.MINOR (null when it matches or is
 unreadable). The shared `Admin\AdminService` dashboard shows it as its
 "compatibility" row, so every platform built on it gets the warning.
 
-## 1.8.0 (unreleased) — one delivery, settings and tag policy for every platform
+## 1.8.0 — one delivery, settings and tag policy for every platform
 
 Five public classes that were platform code before: `Delivery\OutboxDelivery`
 (record a purge per instance, flush this request's rows, drain, `drainAll()`,
@@ -356,6 +368,19 @@ platform) uses one implementation instead of a copy:
   `http(s)://host[:port]`); pinning is then off (the guard still checks the
   name). A custom Guzzle handler is refused unless it declares that it honours
   the curl options. Needs `guzzlehttp/guzzle` ^7.5 (suggested).
+  `TridentFactory::create()`, `createFromEnv()` and `createClient()` use this
+  guarded transport with the existing 10-second request and 5-second connect
+  timeouts. Finite native DNS resolution now shares the request/connect budget;
+  elapsed resolution time is subtracted before cURL starts. The bounded hostname
+  path requires a matching PHP CLI and enabled process functions; see
+  [guarded transport deadlines](#guarded-transport-deadlines).
+  These defaults require ext-curl and fail explicitly when it is
+  unavailable; an unpinned stream fallback is not used. The SDK's PSR-18 path
+  remains usable without ext-curl through `createWithClient()` or a directly
+  constructed `TridentClient`. With an explicit custom client, its caller must
+  provide the address guard, connection pinning, proxy and redirect policy;
+  these defaults do not wrap or secure that transport. This does not change
+  integrations, including Magento, that intentionally supply their own client.
 - **`Security\TokenVault`** — an admin-stored API token encrypted at rest and
   bound to its URL: XChaCha20-Poly1305 with the normalised URL (scheme, host,
   port, path) as associated data; key = HKDF-SHA256 of the application secret
@@ -509,3 +534,36 @@ admin screens warn when a connected Trident runs another release line.
 ## License
 
 MIT License - see LICENSE file for details.
+
+
+## Guarded transport deadlines
+
+For finite timeouts, `TransportFactory` performs the existing native A/NSS and
+AAAA address checks in a disposable matching PHP CLI process. DNS uses the
+earliest positive request/connect deadline. Resolution time is deducted from
+both finite cURL budgets; exhaustion fails before the HTTP handler runs. All
+returned addresses are still checked, and the selected allowed address remains
+pinned. No API token, URL or request body is sent to the resolver process.
+
+This path requires PHP 8.1 or later, qualified nonblocking process pipes, and
+these enabled functions: `proc_open`, `proc_get_status`, `proc_terminate`,
+`proc_close`, `stream_select`, `stream_set_blocking`, `gethostbynamel` and
+`dns_get_record`. On CLI, the current `PHP_BINARY` is used. On FPM, install a
+matching CLI in `PHP_BINDIR`; the fixed versioned `php<major>.<minor>` candidate
+and generic `php` are checked without a shell or PATH lookup. Its PHP version
+must match the calling runtime exactly. Install/update the CLI alongside FPM,
+including its patch version. No unbounded fallback is used if the capability
+is missing. Windows process pipes are not qualified by this transport path;
+finite hostname requests explicitly refuse there.
+
+Numeric hosts do not require a resolver process. Explicit zero timeout options
+retain their existing meaning; when both budgets are zero, the existing
+synchronous lookup remains. Direct `NetworkGuard::address()` calls without a
+deadline and explicitly injected resolver callbacks retain their existing
+caller-owned synchronous contract. A custom PSR-18 client remains responsible
+for its own DNS deadline, address guard, connection pinning and proxy policy.
+
+Capability, worker or deadline failures become Guzzle `ConnectException`
+network errors with a specific diagnostic. The exact refusal messages and
+migration actions are listed in the
+[1.8.0 upgrade guide](../../docs/UPGRADE_1.7.x_TO_1.8.0.md#php-sdk-bounded-dns-requirements).

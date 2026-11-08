@@ -54,6 +54,7 @@ class TridentClientTest extends TestCase
         );
     }
 
+    /** @param array<string, mixed> $responseData */
     private function setupSuccessfulRequest(string $method, string $expectedUrl, array $responseData, int $statusCode = 200): void
     {
         $this->requestFactory->expects($this->once())
@@ -83,6 +84,7 @@ class TridentClientTest extends TestCase
             ->willReturn(json_encode($responseData));
     }
 
+    /** @param array<string, mixed> $responseData */
     private function setupPostRequest(string $expectedUrl, array $responseData, int $statusCode = 200): void
     {
         $this->requestFactory->expects($this->once())
@@ -119,6 +121,7 @@ class TridentClientTest extends TestCase
             ->willReturn(json_encode($responseData));
     }
 
+    /** @param array<string, mixed> $responseData */
     private function setupPostRequestWithoutBody(string $expectedUrl, array $responseData, int $statusCode = 200): void
     {
         $this->requestFactory->expects($this->once())
@@ -642,8 +645,8 @@ class TridentClientTest extends TestCase
         ]);
 
         $response = $this->client->launchStart([
-            'name' => 'v2.0 Release',
-            'sitemap_url' => 'https://example.com/sitemap.xml',
+            'urls' => ['/products/1'],
+            'auto_complete' => false,
         ]);
 
         $this->assertTrue($response->isSuccess());

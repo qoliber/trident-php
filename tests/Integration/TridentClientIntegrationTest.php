@@ -295,9 +295,9 @@ class TridentClientIntegrationTest extends TestCase
     public function testLaunchModeWorkflow(): void
     {
         try {
-            // Start a launch
+            // The engine exposes one global launch; explicitly retain manual completion.
             $startResponse = $this->trident->launchStart([
-                'name' => 'Integration Test Launch',
+                'auto_complete' => false,
                 'urls' => [
                     'http://localhost/page1',
                     'http://localhost/page2',
@@ -305,25 +305,31 @@ class TridentClientIntegrationTest extends TestCase
             ]);
         } catch (\Qoliber\Trident\Exception\TridentException $e) {
             $this->markTestSkipped('Launch mode not enabled: ' . $e->getMessage());
-            return;
         }
 
         if (!$startResponse->isSuccess()) {
             $this->markTestSkipped('Launch mode not available (Enterprise feature)');
-            return;
         }
 
-        $this->assertTrue($startResponse->isSuccess());
-        $this->assertNotNull($startResponse->launchId);
+        try {
+            $this->assertTrue($startResponse->isSuccess());
+            $this->assertNull($startResponse->launchId);
+            $this->assertSame(2, $startResponse->urlsTotal);
+            $this->assertSame(2, $startResponse->raw()['total_urls']);
 
-        $launchId = $startResponse->launchId;
-
-        // Get launch status
-        $statusResponse = $this->trident->launchStatus($launchId);
-        $this->assertEquals($launchId, $statusResponse->launchId);
-
-        // Abort the launch (cleanup)
-        $abortResponse = $this->trident->launchAbort($launchId, 'Integration test cleanup');
-        $this->assertTrue($abortResponse->isAborted());
+            $statusResponse = $this->trident->launchStatus();
+            $this->assertTrue($statusResponse->active);
+            $this->assertSame('', $statusResponse->launchId);
+            $this->assertSame($statusResponse->raw()['state'], $statusResponse->status);
+            $this->assertContains($statusResponse->status, ['warming', 'awaiting_approval']);
+        } finally {
+            // Abort acknowledges success; lifecycle state comes from the status endpoint.
+            $abortResponse = $this->trident->launchAbort(null, 'Integration test cleanup');
+        }
+        $this->assertTrue($abortResponse->isSuccess());
+        $this->assertNull($abortResponse->status);
+        $statusResponse = $this->trident->launchStatus();
+        $this->assertFalse($statusResponse->active);
+        $this->assertSame('aborted', $statusResponse->status);
     }
 }

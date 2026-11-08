@@ -59,7 +59,10 @@ final class RawAnswerTest extends TestCase
 
         self::assertTrue(method_exists($response, 'raw'), $class . ' has raw()');
         self::assertSame($answer, $response->raw());
-        self::assertSame(7, $response->payload()->int('engine_field_from_the_future.nested'));
+        self::assertTrue(method_exists($response, 'payload'), $class . ' has payload()');
+        $payload = $response->payload();
+        self::assertInstanceOf(\Qoliber\Trident\Admin\Payload::class, $payload);
+        self::assertSame(7, $payload->int('engine_field_from_the_future.nested'));
     }
 
     public function testAConstructedResponseHasAnEmptyAnswer(): void

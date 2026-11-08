@@ -100,8 +100,29 @@ class TransportFactory
             $uri = $request->getUri();
             $host = $uri->getHost();
             $port = $uri->getPort() ?? ($uri->getScheme() === 'https' ? 443 : 80);
+            $started = hrtime(true) / 1000000000;
             try {
-                $address = $guard->address($host);
+                $budgets = [];
+                foreach (['timeout', 'connect_timeout'] as $name) {
+                    $value = $options[$name] ?? 0;
+                    if (!is_numeric($value) || !is_finite((float) $value) || (float) $value < 0) {
+                        throw new NativeResolutionException('Request deadlines must be finite and nonnegative');
+                    }
+                    $budgets[$name] = (float) $value;
+                }
+                $finite = array_filter($budgets, static fn (float $value): bool => $value > 0);
+                $deadline = $finite === [] ? null : $started + min($finite);
+                $address = $guard->address($host, $deadline);
+                $elapsed = hrtime(true) / 1000000000 - $started;
+                foreach ($budgets as $name => $budget) {
+                    if ($budget > 0) {
+                        // cURL truncates milliseconds: do not turn a tiny remainder into unlimited.
+                        if ($budget - $elapsed < 0.001) {
+                            throw new NativeResolutionException('Request deadline exhausted during native DNS resolution');
+                        }
+                        $options[$name] = $budget - $elapsed;
+                    }
+                }
             } catch (\RuntimeException $e) {
                 return Create::rejectionFor(new ConnectException($e->getMessage(), $request));
             }
