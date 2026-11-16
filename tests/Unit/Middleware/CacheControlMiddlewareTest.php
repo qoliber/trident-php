@@ -11,24 +11,66 @@ declare(strict_types=1);
 
 namespace Qoliber\Trident\Tests\Unit\Middleware;
 
-use PHPUnit\Framework\MockObject\MockObject;
+use Closure;
+use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Qoliber\Trident\Middleware\CacheControlDecision;
 use Qoliber\Trident\Middleware\CacheControlMiddleware;
 
+/**
+ * Real PSR-7 messages, not mocks. The defect these tests pin was invisible to
+ * mocks: a mocked `withAttribute()` returned the same request object, so a
+ * helper that only returned a new request looked as if it worked.
+ */
 class CacheControlMiddlewareTest extends TestCase
 {
-    private ServerRequestInterface&MockObject $request;
-    private ResponseInterface&MockObject $response;
-    private RequestHandlerInterface&MockObject $handler;
-
-    protected function setUp(): void
+    /**
+     * @param array<string, string> $headers
+     */
+    private function request(array $headers = []): ServerRequestInterface
     {
-        $this->request = $this->createMock(ServerRequestInterface::class);
-        $this->response = $this->createMock(ResponseInterface::class);
-        $this->handler = $this->createMock(RequestHandlerInterface::class);
+        return new ServerRequest('GET', 'https://shop.test/account', $headers);
+    }
+
+    /**
+     * A handler that runs `$application` with the request it was given and
+     * answers with `$response` (a bare 200 by default).
+     *
+     * @param (Closure(ServerRequestInterface): void)|null $application
+     */
+    private function handler(?Closure $application = null, ?ResponseInterface $response = null): RequestHandlerInterface
+    {
+        return new class ($application, $response ?? new Response(200)) implements RequestHandlerInterface {
+            public function __construct(
+                private readonly ?Closure $application,
+                private readonly ResponseInterface $response
+            ) {
+            }
+
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                if ($this->application !== null) {
+                    ($this->application)($request);
+                }
+
+                return $this->response;
+            }
+        };
+    }
+
+    /**
+     * @param (Closure(ServerRequestInterface): void)|null $application
+     */
+    private function cacheControl(
+        CacheControlMiddleware $middleware,
+        ServerRequestInterface $request,
+        ?Closure $application = null
+    ): string {
+        return $middleware->process($request, $this->handler($application))->getHeaderLine('Cache-Control');
     }
 
     public function testConstants(): void
@@ -37,193 +79,298 @@ class CacheControlMiddlewareTest extends TestCase
         $this->assertEquals('trident.ttl', CacheControlMiddleware::ATTRIBUTE_TTL);
         $this->assertEquals('trident.stale_while_revalidate', CacheControlMiddleware::ATTRIBUTE_SWR);
         $this->assertEquals('trident.private', CacheControlMiddleware::ATTRIBUTE_PRIVATE);
+        $this->assertEquals('trident.cache_decision', CacheControlMiddleware::ATTRIBUTE_DECISION);
     }
 
     public function testProcessWithDefaultSettings(): void
     {
-        $middleware = new CacheControlMiddleware();
-
-        $this->handler->method('handle')
-            ->willReturn($this->response);
-
-        $this->response->method('hasHeader')
-            ->with('Cache-Control')
-            ->willReturn(false);
-
-        $this->request->method('getAttribute')
-            ->willReturnMap([
-                [CacheControlMiddleware::ATTRIBUTE_CACHEABLE, true, true],
-                [CacheControlMiddleware::ATTRIBUTE_TTL, 3600, 3600],
-                [CacheControlMiddleware::ATTRIBUTE_SWR, 60, 60],
-                [CacheControlMiddleware::ATTRIBUTE_PRIVATE, false, false],
-            ]);
-
-        $this->response->expects($this->once())
-            ->method('withHeader')
-            ->with('Cache-Control', 'public, max-age=3600, stale-while-revalidate=60')
-            ->willReturn($this->response);
-
-        $result = $middleware->process($this->request, $this->handler);
-
-        $this->assertSame($this->response, $result);
+        $this->assertSame(
+            'public, max-age=3600, stale-while-revalidate=60',
+            $this->cacheControl(new CacheControlMiddleware(), $this->request())
+        );
     }
 
     public function testProcessWithCustomDefaults(): void
     {
-        $middleware = new CacheControlMiddleware(7200, 120, true);
-
-        $this->handler->method('handle')
-            ->willReturn($this->response);
-
-        $this->response->method('hasHeader')
-            ->with('Cache-Control')
-            ->willReturn(false);
-
-        $this->request->method('getAttribute')
-            ->willReturnMap([
-                [CacheControlMiddleware::ATTRIBUTE_CACHEABLE, true, true],
-                [CacheControlMiddleware::ATTRIBUTE_TTL, 7200, 7200],
-                [CacheControlMiddleware::ATTRIBUTE_SWR, 120, 120],
-                [CacheControlMiddleware::ATTRIBUTE_PRIVATE, true, true],
-            ]);
-
-        $this->response->expects($this->once())
-            ->method('withHeader')
-            ->with('Cache-Control', 'private, max-age=7200')
-            ->willReturn($this->response);
-
-        $middleware->process($this->request, $this->handler);
-    }
-
-    public function testProcessSkipsWhenCacheControlExists(): void
-    {
-        $middleware = new CacheControlMiddleware();
-
-        $this->handler->method('handle')
-            ->willReturn($this->response);
-
-        $this->response->method('hasHeader')
-            ->with('Cache-Control')
-            ->willReturn(true);
-
-        $this->response->expects($this->never())
-            ->method('withHeader');
-
-        $result = $middleware->process($this->request, $this->handler);
-
-        $this->assertSame($this->response, $result);
-    }
-
-    public function testProcessWithCacheDisabled(): void
-    {
-        $middleware = new CacheControlMiddleware();
-
-        $this->handler->method('handle')
-            ->willReturn($this->response);
-
-        $this->response->method('hasHeader')
-            ->with('Cache-Control')
-            ->willReturn(false);
-
-        $this->request->method('getAttribute')
-            ->with(CacheControlMiddleware::ATTRIBUTE_CACHEABLE, true)
-            ->willReturn(false);
-
-        $this->response->expects($this->once())
-            ->method('withHeader')
-            ->with('Cache-Control', 'no-store, no-cache, must-revalidate')
-            ->willReturn($this->response);
-
-        $middleware->process($this->request, $this->handler);
-    }
-
-    public function testProcessWithPrivateResponse(): void
-    {
-        $middleware = new CacheControlMiddleware();
-
-        $this->handler->method('handle')
-            ->willReturn($this->response);
-
-        $this->response->method('hasHeader')
-            ->with('Cache-Control')
-            ->willReturn(false);
-
-        $this->request->method('getAttribute')
-            ->willReturnMap([
-                [CacheControlMiddleware::ATTRIBUTE_CACHEABLE, true, true],
-                [CacheControlMiddleware::ATTRIBUTE_TTL, 3600, 1800],
-                [CacheControlMiddleware::ATTRIBUTE_SWR, 60, 30],
-                [CacheControlMiddleware::ATTRIBUTE_PRIVATE, false, true],
-            ]);
-
-        $this->response->expects($this->once())
-            ->method('withHeader')
-            ->with('Cache-Control', 'private, max-age=1800')
-            ->willReturn($this->response);
-
-        $middleware->process($this->request, $this->handler);
+        $this->assertSame(
+            'private, max-age=7200',
+            $this->cacheControl(new CacheControlMiddleware(7200, 120, true), $this->request())
+        );
     }
 
     public function testProcessWithZeroSwr(): void
     {
-        $middleware = new CacheControlMiddleware(3600, 0, false);
-
-        $this->handler->method('handle')
-            ->willReturn($this->response);
-
-        $this->response->method('hasHeader')
-            ->with('Cache-Control')
-            ->willReturn(false);
-
-        $this->request->method('getAttribute')
-            ->willReturnMap([
-                [CacheControlMiddleware::ATTRIBUTE_CACHEABLE, true, true],
-                [CacheControlMiddleware::ATTRIBUTE_TTL, 3600, 3600],
-                [CacheControlMiddleware::ATTRIBUTE_SWR, 0, 0],
-                [CacheControlMiddleware::ATTRIBUTE_PRIVATE, false, false],
-            ]);
-
-        $this->response->expects($this->once())
-            ->method('withHeader')
-            ->with('Cache-Control', 'public, max-age=3600')
-            ->willReturn($this->response);
-
-        $middleware->process($this->request, $this->handler);
+        $this->assertSame(
+            'public, max-age=3600',
+            $this->cacheControl(new CacheControlMiddleware(3600, 0, false), $this->request())
+        );
     }
 
-    public function testDisableCache(): void
+    public function testProcessSkipsWhenCacheControlExists(): void
     {
-        $this->request->expects($this->once())
-            ->method('withAttribute')
-            ->with(CacheControlMiddleware::ATTRIBUTE_CACHEABLE, false)
-            ->willReturn($this->request);
+        $response = new Response(200, ['Cache-Control' => 'public, s-maxage=30']);
+        $handler = $this->handler(
+            static function (ServerRequestInterface $request): void {
+                CacheControlMiddleware::disableCache($request);
+            },
+            $response
+        );
 
-        $result = CacheControlMiddleware::disableCache($this->request);
+        $result = (new CacheControlMiddleware())->process($this->request(['Cookie' => 'sid=1']), $handler);
 
-        $this->assertSame($this->request, $result);
+        $this->assertSame($response, $result);
+        $this->assertSame('public, s-maxage=30', $result->getHeaderLine('Cache-Control'));
     }
 
-    public function testSetTtl(): void
+    // -- The helpers reach the middleware without their return value ---------
+
+    public function testDisableCacheCalledInTheHandlerReachesTheMiddleware(): void
     {
-        $this->request->expects($this->once())
-            ->method('withAttribute')
-            ->with(CacheControlMiddleware::ATTRIBUTE_TTL, 7200)
-            ->willReturn($this->request);
-
-        $result = CacheControlMiddleware::setTtl($this->request, 7200);
-
-        $this->assertSame($this->request, $result);
+        $this->assertSame(
+            'no-store, no-cache, must-revalidate',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::disableCache($request);
+                }
+            )
+        );
     }
 
-    public function testSetPrivate(): void
+    public function testSetPrivateCalledInTheHandlerReachesTheMiddleware(): void
     {
-        $this->request->expects($this->once())
-            ->method('withAttribute')
-            ->with(CacheControlMiddleware::ATTRIBUTE_PRIVATE, true)
-            ->willReturn($this->request);
+        $this->assertSame(
+            'private, max-age=3600',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::setPrivate($request);
+                }
+            )
+        );
+    }
 
-        $result = CacheControlMiddleware::setPrivate($this->request);
+    public function testSetTtlCalledInTheHandlerReachesTheMiddleware(): void
+    {
+        $this->assertSame(
+            'public, max-age=300, stale-while-revalidate=60',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::setTtl($request, 300);
+                }
+            )
+        );
+    }
 
-        $this->assertSame($this->request, $result);
+    public function testADecisionMadeOnADerivedRequestStillReachesTheMiddleware(): void
+    {
+        // An inner layer (a router, another middleware) hands the application
+        // a request it derived from the one this middleware passed on.
+        $this->assertSame(
+            'private, max-age=60',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(),
+                static function (ServerRequestInterface $request): void {
+                    $derived = $request->withAttribute('route', 'account')->withHeader('X-Inner', '1');
+                    $derived = CacheControlMiddleware::setTtl($derived, 60);
+                    CacheControlMiddleware::setPrivate($derived);
+                }
+            )
+        );
+    }
+
+    public function testDisableCacheWinsOverPrivateAndTtl(): void
+    {
+        $this->assertSame(
+            'no-store, no-cache, must-revalidate',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::setTtl($request, 300);
+                    CacheControlMiddleware::setPrivate($request);
+                    CacheControlMiddleware::disableCache($request);
+                }
+            )
+        );
+    }
+
+    public function testEachRequestGetsItsOwnDecision(): void
+    {
+        $middleware = new CacheControlMiddleware();
+
+        $first = $this->cacheControl(
+            $middleware,
+            $this->request(),
+            static function (ServerRequestInterface $request): void {
+                CacheControlMiddleware::setPrivate($request);
+            }
+        );
+        $second = $this->cacheControl($middleware, $this->request());
+
+        $this->assertSame('private, max-age=3600', $first);
+        $this->assertSame('public, max-age=3600, stale-while-revalidate=60', $second);
+    }
+
+    // -- Requests that carry credentials -------------------------------------
+
+    public function testACookieBearingRequestIsPrivateWhenTheApplicationDecidedNothing(): void
+    {
+        $this->assertSame(
+            'private, max-age=3600',
+            $this->cacheControl(new CacheControlMiddleware(), $this->request(['Cookie' => 'session=alice']))
+        );
+    }
+
+    public function testAnAuthorizationBearingRequestIsPrivateWhenTheApplicationDecidedNothing(): void
+    {
+        $this->assertSame(
+            'private, max-age=3600',
+            $this->cacheControl(new CacheControlMiddleware(), $this->request(['Authorization' => 'Bearer abc']))
+        );
+    }
+
+    public function testParsedCookiesCountEvenWithoutTheHeader(): void
+    {
+        $request = $this->request()->withCookieParams(['session' => 'alice']);
+
+        $this->assertSame('private, max-age=3600', $this->cacheControl(new CacheControlMiddleware(), $request));
+    }
+
+    public function testAnEmptyCookieHeaderIsNotACredential(): void
+    {
+        $this->assertSame(
+            'public, max-age=3600, stale-while-revalidate=60',
+            $this->cacheControl(new CacheControlMiddleware(), $this->request(['Cookie' => '']))
+        );
+    }
+
+    public function testSetPublicSharesTheResponseOfACookieBearingRequest(): void
+    {
+        $this->assertSame(
+            'public, max-age=3600, stale-while-revalidate=60',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(['Cookie' => '_ga=GA1.2.3']),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::setPublic($request);
+                }
+            )
+        );
+    }
+
+    public function testSetPublicOverridesAPrivateDefault(): void
+    {
+        $this->assertSame(
+            'public, max-age=3600, stale-while-revalidate=60',
+            $this->cacheControl(
+                new CacheControlMiddleware(3600, 60, true),
+                $this->request(),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::setPublic($request);
+                }
+            )
+        );
+    }
+
+    public function testATtlAloneDoesNotMakeACookieBearingResponsePublic(): void
+    {
+        $this->assertSame(
+            'private, max-age=300',
+            $this->cacheControl(
+                new CacheControlMiddleware(),
+                $this->request(['Cookie' => 'session=alice']),
+                static function (ServerRequestInterface $request): void {
+                    CacheControlMiddleware::setTtl($request, 300);
+                }
+            )
+        );
+    }
+
+    // -- Attributes set before the middleware ran ----------------------------
+
+    public function testAttributesSetUpstreamAreHonoured(): void
+    {
+        $request = $this->request()
+            ->withAttribute(CacheControlMiddleware::ATTRIBUTE_TTL, 1800)
+            ->withAttribute(CacheControlMiddleware::ATTRIBUTE_SWR, 30);
+
+        $this->assertSame(
+            'public, max-age=1800, stale-while-revalidate=30',
+            $this->cacheControl(new CacheControlMiddleware(), $request)
+        );
+    }
+
+    public function testCacheDisabledUpstreamIsHonoured(): void
+    {
+        $request = $this->request()->withAttribute(CacheControlMiddleware::ATTRIBUTE_CACHEABLE, false);
+
+        $this->assertSame(
+            'no-store, no-cache, must-revalidate',
+            $this->cacheControl(new CacheControlMiddleware(), $request)
+        );
+    }
+
+    public function testPrivateSetUpstreamIsHonoured(): void
+    {
+        $request = CacheControlMiddleware::setPrivate($this->request());
+
+        $this->assertSame('private, max-age=3600', $this->cacheControl(new CacheControlMiddleware(), $request));
+    }
+
+    public function testPublicSetUpstreamIsAnExplicitDecisionForACookieBearingRequest(): void
+    {
+        $request = CacheControlMiddleware::setPublic($this->request(['Cookie' => '_ga=GA1.2.3']));
+
+        $this->assertSame(
+            'public, max-age=3600, stale-while-revalidate=60',
+            $this->cacheControl(new CacheControlMiddleware(), $request)
+        );
+    }
+
+    // -- The helpers on their own --------------------------------------------
+
+    public function testHelpersStillReturnARequestCarryingTheAttribute(): void
+    {
+        $request = $this->request();
+
+        $this->assertFalse(
+            CacheControlMiddleware::disableCache($request)->getAttribute(CacheControlMiddleware::ATTRIBUTE_CACHEABLE)
+        );
+        $this->assertSame(
+            7200,
+            CacheControlMiddleware::setTtl($request, 7200)->getAttribute(CacheControlMiddleware::ATTRIBUTE_TTL)
+        );
+        $this->assertTrue(
+            CacheControlMiddleware::setPrivate($request)->getAttribute(CacheControlMiddleware::ATTRIBUTE_PRIVATE)
+        );
+        $this->assertFalse(
+            CacheControlMiddleware::setPublic($request)->getAttribute(CacheControlMiddleware::ATTRIBUTE_PRIVATE)
+        );
+        // Outside the middleware there is no decision to write to.
+        $this->assertNull(CacheControlMiddleware::decision($request));
+    }
+
+    public function testTheHandlerSeesTheDecisionTheMiddlewareReads(): void
+    {
+        $seen = null;
+        $this->cacheControl(
+            new CacheControlMiddleware(),
+            $this->request(),
+            static function (ServerRequestInterface $request) use (&$seen): void {
+                $seen = CacheControlMiddleware::decision($request);
+                CacheControlMiddleware::setTtl($request, 42);
+            }
+        );
+
+        $this->assertInstanceOf(CacheControlDecision::class, $seen);
+        $this->assertSame(42, $seen->ttl);
+        $this->assertNull($seen->private);
+        $this->assertNull($seen->cacheable);
     }
 }

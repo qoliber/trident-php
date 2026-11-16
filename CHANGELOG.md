@@ -4,6 +4,18 @@ The per-version notes live in README.md (one section per release); this file
 lists them in order.
 
 ## 1.8.2 — unreleased
+- **Behaviour change:** `CacheControlMiddleware` answers a request that carries
+  a `Cookie` or `Authorization` header with `private`, unless the handler
+  calls the new `setPublic()`. `setTtl()` alone does not make such a response
+  public. Before, every response without its own `Cache-Control` went out
+  `public, max-age=3600`, whoever asked.
+- Fix: `disableCache()`, `setTtl()` and `setPrivate()` take effect when called
+  from a request handler. They used to return a new request that the
+  middleware never saw, so they did nothing. If your handlers call them, check
+  that the pages they mark are the ones you mean.
+- New: `CacheControlMiddleware::setPublic()` marks a response as shareable
+  although the request carried credentials. Use it only for a response that is
+  the same for every visitor.
 - Fix: native DNS validation shares finite request/connect deadlines, with the
   remaining cURL budgets debited after resolution. Preserve native A/NSS/AAAA
   lookup, all-address metadata refusal and checked-address pinning.

@@ -495,15 +495,33 @@ $middleware = new CacheControlMiddleware(
     defaultPrivate: false
 );
 
+// In your request handlers (the request the handler received, or one derived
+// from it). The decision reaches the middleware; the return value is optional.
+
 // Disable caching for specific requests
-$request = CacheControlMiddleware::disableCache($request);
+CacheControlMiddleware::disableCache($request);
 
 // Set custom TTL
-$request = CacheControlMiddleware::setTtl($request, 300);
+CacheControlMiddleware::setTtl($request, 300);
 
 // Mark as private (user-specific)
-$request = CacheControlMiddleware::setPrivate($request);
+CacheControlMiddleware::setPrivate($request);
+
+// Mark as shareable although the request carried a Cookie or Authorization header
+CacheControlMiddleware::setPublic($request);
 ```
+
+The header is only added when the response has no `Cache-Control` of its own.
+
+A request that carries a `Cookie` or `Authorization` header is answered
+`private` unless the handler calls `setPublic()` — a shared cache keys on the
+URL, not on who asked. `setTtl()` alone does not make such a response public.
+Call `setPublic()` only for a response that is the same for every visitor.
+
+Before 1.8.2 these helpers had no effect when called from a handler: they
+returned a new request that the middleware never saw, so every response without
+`Cache-Control` went out `public, max-age=3600`. If your handlers relied on the
+helpers, check that the pages they mark are the ones you mean.
 
 ## Environment Variables
 
