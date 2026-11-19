@@ -46,6 +46,9 @@ strip_header = false
 [admin]
 enabled = true
 address = "0.0.0.0:9100"
+# Bound to all interfaces inside the container; the port is not exposed
+# beyond the host, so the admin API runs without TLS (1.8.2, audit S3).
+allow_plaintext_remote = true
 auth_token = "test-admin-key-12345"
 
 # Metrics
